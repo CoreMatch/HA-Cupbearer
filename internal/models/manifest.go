@@ -43,6 +43,15 @@ type ArtifactRelease struct {
 	SizeBytes    int64  `json:"size_bytes"`
 }
 
+type ProjectRelease struct {
+	Name        string            `json:"name"`
+	DisplayName string            `json:"display_name,omitempty"`
+	Channel     string            `json:"channel,omitempty"`
+	Version     string            `json:"version"`
+	PublishedAt string            `json:"published_at,omitempty"`
+	Artifacts   []ArtifactRelease `json:"artifacts"`
+}
+
 func NewEmptyManifest() *Manifest {
 	return &Manifest{
 		SchemaVersion: ManifestSchemaVersion,
@@ -139,4 +148,28 @@ func validateDownloadPath(serviceName, rawPath string) error {
 	}
 
 	return nil
+}
+
+func (m *Manifest) Projects() []ProjectRelease {
+	projects := make([]ProjectRelease, 0, len(m.Services))
+	for _, service := range m.Services {
+		artifacts := make([]ArtifactRelease, 0, len(service.Artifacts))
+		for _, artifact := range service.Artifacts {
+			if artifact.Role != "binary" {
+				continue
+			}
+			artifacts = append(artifacts, artifact)
+		}
+
+		projects = append(projects, ProjectRelease{
+			Name:        service.Name,
+			DisplayName: service.DisplayName,
+			Channel:     service.Channel,
+			Version:     service.Version,
+			PublishedAt: service.PublishedAt,
+			Artifacts:   artifacts,
+		})
+	}
+
+	return projects
 }

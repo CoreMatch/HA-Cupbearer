@@ -50,6 +50,27 @@ func (h *Handler) GetManifest(c *gin.Context) {
 	})
 }
 
+func (h *Handler) GetProjects(c *gin.Context) {
+	manifest, err := h.loadManifest()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "failed to load manifest",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "projects loaded",
+		"data": gin.H{
+			"generated_at": manifest.GeneratedAt,
+			"projects":     manifest.Projects(),
+		},
+	})
+}
+
 func (h *Handler) GetArtifact(c *gin.Context) {
 	service := c.Param("service")
 	artifactPath := strings.TrimPrefix(c.Param("filepath"), "/")

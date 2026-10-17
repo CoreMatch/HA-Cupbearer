@@ -18,6 +18,7 @@ func NewRouter(cfg *models.Config) *gin.Engine {
 	{
 		api.GET("/healthz", handler.Healthz)
 		api.GET("/manifest", handler.GetManifest)
+		api.GET("/projects", handler.GetProjects)
 		api.GET("/artifacts/:service/*filepath", handler.GetArtifact)
 	}
 
