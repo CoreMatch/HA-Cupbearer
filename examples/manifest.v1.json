@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-17T06:00:00Z",
+  "services": [
+    {
+      "name": "hrpauth",
+      "display_name": "HRPAuth",
+      "channel": "stable",
+      "version": "1.0.0",
+      "published_at": "2026-10-17T05:45:00Z",
+      "artifacts": [
+        {
+          "id": "linux-amd64-binary",
+          "role": "binary",
+          "os": "linux",
+          "arch": "amd64",
+          "file_name": "HRPAuth",
+          "download_path": "release/linux-amd64/HRPAuth",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "size_bytes": 28753920
+        }
+      ]
+    },
+    {
+      "name": "hrpauth-yggdrasil-api",
+      "display_name": "HAygg",
+      "channel": "stable",
+      "version": "1.0.0",
+      "published_at": "2026-10-17T05:45:00Z",
+      "artifacts": [
+        {
+          "id": "linux-amd64-binary",
+          "role": "binary",
+          "os": "linux",
+          "arch": "amd64",
+          "file_name": "HAygg",
+          "download_path": "release/linux-amd64/HAygg",
+          "sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+          "size_bytes": 18350080
+        }
+      ]
+    },
+    {
+      "name": "haskinproxy",
+      "display_name": "HASkinProxy",
+      "channel": "stable",
+      "version": "1.0.0",
+      "published_at": "2026-10-17T05:45:00Z",
+      "artifacts": [
+        {
+          "id": "linux-amd64-binary",
+          "role": "binary",
+          "os": "linux",
+          "arch": "amd64",
+          "file_name": "hasp",
+          "download_path": "release/linux-amd64/hasp",
+          "sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+          "size_bytes": 9474048
+        }
+      ]
+    }
+  ]
+}

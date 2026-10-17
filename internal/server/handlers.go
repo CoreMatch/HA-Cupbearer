@@ -88,10 +88,7 @@ func (h *Handler) loadManifest() (*models.Manifest, error) {
 	data, err := os.ReadFile(h.cfg.Manifest.Path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return &models.Manifest{
-				GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-				Services:    []models.ServiceEntry{},
-			}, nil
+			return models.NewEmptyManifest(), nil
 		}
 		return nil, err
 	}
@@ -101,11 +98,9 @@ func (h *Handler) loadManifest() (*models.Manifest, error) {
 		return nil, err
 	}
 
-	if manifest.GeneratedAt == "" {
-		manifest.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	if manifest.Services == nil {
-		manifest.Services = []models.ServiceEntry{}
+	manifest.Normalize()
+	if err := manifest.Validate(); err != nil {
+		return nil, err
 	}
 
 	return &manifest, nil
