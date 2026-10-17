@@ -1,6 +1,7 @@
 package models
 
 type Config struct {
+	Version  string         `yaml:"version" json:"version"`
 	Server   ServerConfig   `yaml:"server" json:"server"`
 	Storage  StorageConfig  `yaml:"storage" json:"storage"`
 	Manifest ManifestConfig `yaml:"manifest" json:"manifest"`
@@ -20,8 +21,9 @@ type ManifestConfig struct {
 
 func DefaultConfig() *Config {
 	return &Config{
+		Version: "1",
 		Server: ServerConfig{
-			Listen: ":18080",
+			Listen: ":2770",
 		},
 		Storage: StorageConfig{
 			ArtifactsRoot: "./data/artifacts",
