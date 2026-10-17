@@ -1,0 +1,8 @@
+server:
+  listen: ":18080"
+
+storage:
+  artifacts_root: "./data/artifacts"
+
+manifest:
+  path: "./data/manifest.json"
