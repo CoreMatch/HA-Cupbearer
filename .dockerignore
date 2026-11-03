@@ -15,7 +15,6 @@ docs
 config.yaml
 config.yml
 config.yaml.bak.*
-config.example.yaml
 
 # 编排模板里的密钥目录不得进入镜像构建上下文
 deploy/secrets

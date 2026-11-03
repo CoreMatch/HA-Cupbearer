@@ -1,9 +1,0 @@
-version: "1"
-server:
-  listen: ":2771"
-
-storage:
-  artifacts_root: "./data/artifacts"
-
-manifest:
-  path: "./data/manifest.json"
