@@ -20,7 +20,10 @@ revision.
 
 ## Quick start
 
-1. Copy `config.example.yaml` to `config.yaml`.
+1. Run the service; on first start it auto-generates `config.yaml` with the
+   default values from `internal/models/config.go` (`DefaultConfig`):
+   listen `:2770`, artifacts root `./data/artifacts`, manifest path
+   `./data/manifest.json`. Edit the generated file to override them.
 2. Create `data/manifest.json` if you want to provide version data immediately.
    You can start from `examples/manifest.v1.json`.
 3. Run:
