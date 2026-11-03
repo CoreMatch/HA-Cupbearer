@@ -1,0 +1,24 @@
+server:
+  listen_addr: ":2704"
+  maintenance_addr: ":2705"
+
+hrpauth:
+  base_url: "${HRPAUTH_URL}"
+  client_id: "${SDKHANDLER_CLIENT_ID}"
+  client_secret: "${SDKHANDLER_CLIENT_SECRET}"
+  poll_interval_seconds: 60
+
+build:
+  template_dir: "${SDKHANDLER_TEMPLATE_DIR}"
+  template_git_url: "${SDKHANDLER_TEMPLATE_GIT_URL}"
+  work_dir: ./frontend-build
+  artifacts_dir: ./artifacts
+  current_link: ./current
+  npm_command: npm
+  npm_blacklist: []
+  ignore_scripts_default: true
+  template_poll_interval_seconds: 0
+
+state_dir: ./state
+
+serve_artifacts: false

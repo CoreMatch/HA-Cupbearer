@@ -1,0 +1,21 @@
+server:
+    listen_addr: ":2702"
+    public_url: "${HASKINPROXY_PUBLIC_URL}"
+
+upstream:
+    base_url: "${HRPAUTH_URL}"
+    timeout: 10
+    client_id: "${HASKINPROXY_CLIENT_ID}"
+    client_secret: "${HASKINPROXY_CLIENT_SECRET}"
+
+cache:
+    profile_ttl: 3600
+    texture_ttl: 86400
+    max_size_mb: 256
+
+presence:
+    enabled: true
+    name: HASkinProxy
+
+sdk:
+    enabled: true

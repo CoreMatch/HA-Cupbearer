@@ -1,0 +1,73 @@
+version: "3"
+
+callback:
+    url: "${YGG_PUBLIC_URL}"
+
+core_api:
+    base_url: "${HRPAUTH_URL}"
+    client_id: "${YGG_CLIENT_ID}"
+    client_secret: "${YGG_CLIENT_SECRET}"
+
+database:
+    charset: utf8mb4
+    db_name: "${DB_NAME}"
+    host: "${DB_HOST}"
+    password: "${DB_PASSWORD}"
+    table_prefix: haygg_
+    user: "${DB_USER}"
+
+microservice:
+    name: HRPAuth-Yggdrasil-API
+    profile_cards:
+        Minecraft Assets: 200
+        Mojang Binding: 100
+    relay_path_prefix: /yggdrasil-api
+    relay_url: "${YGG_PUBLIC_URL}"
+    ttl_seconds: 120
+
+redis:
+    db: ${REDIS_DB}
+    host: "${REDIS_HOST}"
+    password: "${REDIS_PASSWORD}"
+    port: ${REDIS_PORT}
+    prefix: hrpauth_ygg_
+
+security:
+    rate_limit_max_attempts: 10
+    rate_limit_window_sec: 600
+
+server:
+    cors_origin: ""
+    port: :2770
+
+site:
+    implementation: HRPAuth Yggdrasil API Provider
+    name: HRPAuth
+    version: 1.0.0
+
+yggdrasil:
+    feature_flags:
+        enable_ip_check: false
+        enable_mojang_anti_features: false
+        enable_profile_key: false
+        legacy_skin_api: true
+        no_mojang_namespace: false
+        non_email_login: true
+        username_check: true
+    security:
+        max_texture_height: 1024
+        max_texture_width: 1024
+        max_tokens_per_user: 10
+        session_expiry_seconds: 28800
+        token_expiry_days: 15
+    server:
+        implementation: HRPAuth Yggdrasil API Provider
+        links:
+            homepage: ""
+            register: ""
+        name: HRPAuth
+        signature_private_key_path: "${SIGNATURE_KEY_DIR}/private_key.pem"
+        signature_public_key_path: "${SIGNATURE_KEY_DIR}/public_key.pem"
+        skin_domains: []
+        textures_storage: ./storage
+        version: 1.0.0

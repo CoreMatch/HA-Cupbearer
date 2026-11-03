@@ -1,0 +1,95 @@
+version: "6"
+
+server:
+    port: :2778
+    cors_origin: "*"
+
+database:
+    charset: utf8mb4
+    db_name: "${DB_NAME}"
+    host: "${DB_HOST}"
+    password: "${DB_PASSWORD}"
+    user: "${DB_USER}"
+
+redis:
+    db: ${REDIS_DB}
+    host: "${REDIS_HOST}"
+    password: "${REDIS_PASSWORD}"
+    port: ${REDIS_PORT}
+    prefix: hrpauth_
+
+storage:
+    orphan_file_expiry_days: 7
+
+verification_code:
+    code_ttl: 600
+    storage_dir: ./cache/verification_codes
+
+security:
+    captcha_ttl: 300
+    enable_captcha: true
+    password_cost: 10
+    rate_limit_max_attempts: 10
+    rate_limit_window_sec: 600
+
+smtp:
+    encryption: tls
+    from_email: "${SMTP_FROM_EMAIL}"
+    from_name: HRPAuth
+    host: "${SMTP_HOST}"
+    password: "${SMTP_PASSWORD}"
+    port: "${SMTP_PORT}"
+    username: "${SMTP_USERNAME}"
+
+callback:
+    url: "${HRPAUTH_PUBLIC_URL}"
+
+frontend:
+    url: "${HRPAUTH_FRONTEND_URL}"
+
+keygen:
+    enable: 0
+
+manage:
+    token: "${MANAGE_TOKEN}"
+
+oauth2:
+    access_token_ttl_sec: 3600
+    authorization_code_ttl_sec: 300
+    issuer: "${HRPAUTH_PUBLIC_URL}"
+    public_client_id: "${HRPAUTH_PUBLIC_CLIENT_ID}"
+    public_redirect_uris:
+        - ${HRPAUTH_PUBLIC_URL}/oauth/callback
+    refresh_token_ttl_sec: 2592000
+    super_client_id: "${HRPAUTH_SUPER_CLIENT_ID}"
+    super_client_secret: "${HRPAUTH_SUPER_CLIENT_SECRET}"
+
+site:
+    implementation: HRPAuth service
+    name: HRPAuth
+    version: "6"
+
+yggdrasil:
+    feature_flags:
+        enable_mojang_anti_features: false
+        enable_profile_key: false
+        legacy_skin_api: true
+        no_mojang_namespace: false
+        non_email_login: true
+        username_check: true
+    security:
+        max_texture_height: 1024
+        max_texture_width: 1024
+        session_expiry_seconds: 28800
+        token_expiry_days: 15
+    server:
+        implementation: HRPAuth service
+        links:
+            homepage: ""
+            register: ""
+        name: HRPAuth
+        signature_private_key_path: "${SIGNATURE_KEY_DIR}/private_key.pem"
+        signature_public_key_path: "${SIGNATURE_KEY_DIR}/public_key.pem"
+        skin_domains: []
+        textures_storage: ./
+        version: "6"

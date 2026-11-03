@@ -3,3 +3,6 @@ build/
 .trae/
 HA-Contract
 1
+deploy/.env
+deploy/secrets/*
+!deploy/secrets/.gitkeep

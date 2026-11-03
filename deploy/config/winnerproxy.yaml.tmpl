@@ -1,0 +1,45 @@
+version: "2"
+
+server:
+    addr: ":2777"
+    public_url: "${WINNERPROXY_PUBLIC_URL}"
+    read_timeout_sec: 15
+    write_timeout_sec: 15
+
+log:
+    level: info
+    format: text
+
+cache:
+    size: 104857600
+    ttl_sec: 300
+
+hrpauth:
+    url: "${HRPAUTH_URL}"
+    client_id: "${WINNERPROXY_CLIENT_ID}"
+    client_secret: "${WINNERPROXY_CLIENT_SECRET}"
+    timeout_sec: 10
+    enabled: true
+    presence:
+        enabled: true
+        name: WinnerProxy
+        ttl_seconds: 0
+    sdk:
+        enabled: true
+        url: ""
+
+upstreams:
+    official:
+        url: https://api.minecraftservices.com
+        timeout_sec: 10
+        enabled: true
+    hrpauth:
+        url: "${HRPAUTH_YGG_URL}"
+        client_id: "${WINNERPROXY_CLIENT_ID}"
+        client_secret: "${WINNERPROXY_CLIENT_SECRET}"
+        timeout_sec: 10
+        enabled: true
+
+site:
+    name: WinnerProxy
+    version: 0.2.0

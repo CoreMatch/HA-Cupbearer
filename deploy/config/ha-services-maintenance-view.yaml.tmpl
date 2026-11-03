@@ -1,0 +1,12 @@
+version: "1"
+
+server:
+  listen: ":18081"
+  public_base_url: "${MAINTENANCEVIEW_PUBLIC_URL}"
+  frontend_dist: "./frontend/dist"
+
+deployer:
+  base_url: "${DEPLOYER_URL}"
+
+state:
+  projects_path: "./data/projects.json"

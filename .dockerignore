@@ -1,0 +1,21 @@
+.git
+.gitignore
+.kilo
+.trae
+build
+node_modules
+frontend/node_modules
+frontend/dist
+HA-Contract
+HRPAuth-Wiki
+my_tmp_dir
+test_run
+*.md
+docs
+config.yaml
+config.yml
+config.yaml.bak.*
+config.example.yaml
+
+# 编排模板里的密钥目录不得进入镜像构建上下文
+deploy/secrets

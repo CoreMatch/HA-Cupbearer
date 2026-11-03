@@ -1,0 +1,237 @@
+# HA 平台容器编排模板
+#
+# 用法:
+#   cp .env.example .env && 编辑 .env (数据库/Redis 地址、密钥、上游 URL)
+#   docker compose up -d --build
+#
+# 说明:
+#   - MySQL / Redis 不在本编排内启动, 通过 .env 中的 DB_* / REDIS_* 指向外部实例。
+#   - 每个服务的 YAML 配置由 deploy/config/*.yaml.tmpl 渲染而成, 容器启动时
+#     用 envsubst 把 ${VAR} 替换为环境变量值, 因此所有可变项都由 .env 控制。
+#   - 镜像在本地构建, tag 统一为 ha/<服务名>:<版本>。
+
+name: ha-platform
+
+x-common-env: &common-env
+  TZ: ${TZ:-Asia/Shanghai}
+  DB_HOST: ${DB_HOST}
+  DB_PORT: ${DB_PORT:-3306}
+  DB_USER: ${DB_USER}
+  DB_PASSWORD: ${DB_PASSWORD}
+  DB_NAME: ${DB_NAME:-hrpa}
+  REDIS_HOST: ${REDIS_HOST}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+  REDIS_DB: ${REDIS_DB:-0}
+  SIGNATURE_KEY_DIR: ${SIGNATURE_KEY_DIR:-/app/secrets}
+
+x-common-logging: &common-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  hrpauth:
+    build:
+      context: ../HRPAuth
+    image: ha/hrpauth:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${HRPAUTH_PORT:-2778}:2778"
+    environment:
+      <<: *common-env
+      CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
+      RENDERED_CONFIG: /app/config.yaml
+      HRPAUTH_URL: http://hrpauth:2778
+      HRPAUTH_PUBLIC_URL: ${HRPAUTH_PUBLIC_URL}
+      HRPAUTH_FRONTEND_URL: ${HRPAUTH_FRONTEND_URL}
+      HRPAUTH_PUBLIC_CLIENT_ID: ${HRPAUTH_PUBLIC_CLIENT_ID}
+      HRPAUTH_SUPER_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID}
+      HRPAUTH_SUPER_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET}
+      MANAGE_TOKEN: ${MANAGE_TOKEN}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-no-reply@example.com}
+    volumes:
+      - ./config/hrpauth.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
+      - ./secrets:/app/secrets:ro
+      - hrpauth-data:/app/data
+      - hrpauth-storage:/app/storage
+      - hrpauth-cache:/app/cache
+    logging: *common-logging
+
+  hrpauth-yggdrasil-api:
+    build:
+      context: ../HRPAuth-Yggdrasil-API
+    image: ha/hrpauth-yggdrasil-api:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${YGG_PORT:-2770}:2770"
+    environment:
+      <<: *common-env
+      CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
+      RENDERED_CONFIG: /app/config.yaml
+      HRPAUTH_URL: http://hrpauth:2778
+      YGG_PUBLIC_URL: ${YGG_PUBLIC_URL}
+      YGG_CLIENT_ID: ${YGG_CLIENT_ID}
+      YGG_CLIENT_SECRET: ${YGG_CLIENT_SECRET}
+    volumes:
+      - ./config/hrpauth-yggdrasil-api.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
+      - ./secrets:/app/secrets:ro
+      - ygg-storage:/app/storage
+    depends_on:
+      - hrpauth
+    logging: *common-logging
+
+  haskinlib:
+    build:
+      context: ../HASkinLib
+    image: ha/haskinlib:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${HASKINLIB_PORT:-2701}:2701"
+    environment:
+      <<: *common-env
+      CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
+      RENDERED_CONFIG: /app/config.yaml
+    volumes:
+      - ./config/haskinlib.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
+      - haskinlib-data:/app/data
+    logging: *common-logging
+
+  haskinproxy:
+    build:
+      context: ../HASkinProxy
+    image: ha/haskinproxy:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${HASKINPROXY_PORT:-2702}:2702"
+    environment:
+      <<: *common-env
+      CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
+      RENDERED_CONFIG: /app/config.yaml
+      HRPAUTH_URL: http://hrpauth:2778
+      HASKINPROXY_PUBLIC_URL: ${HASKINPROXY_PUBLIC_URL}
+      HASKINPROXY_CLIENT_ID: ${HASKINPROXY_CLIENT_ID}
+      HASKINPROXY_CLIENT_SECRET: ${HASKINPROXY_CLIENT_SECRET}
+    depends_on:
+      - hrpauth
+    logging: *common-logging
+
+  winnerproxy:
+    build:
+      context: ../WinnerProxy
+    image: ha/winnerproxy:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${WINNERPROXY_PORT:-2777}:2777"
+    environment:
+      <<: *common-env
+      CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
+      RENDERED_CONFIG: /app/config.yml
+      HRPAUTH_URL: http://hrpauth:2778
+      HRPAUTH_YGG_URL: http://hrpauth-yggdrasil-api:2770/yggdrasil-api/
+      WINNERPROXY_PUBLIC_URL: ${WINNERPROXY_PUBLIC_URL}
+      WINNERPROXY_CLIENT_ID: ${WINNERPROXY_CLIENT_ID}
+      WINNERPROXY_CLIENT_SECRET: ${WINNERPROXY_CLIENT_SECRET}
+    depends_on:
+      - hrpauth
+      - hrpauth-yggdrasil-api
+    logging: *common-logging
+
+  mca-server:
+    build:
+      context: ../MatchCoreArena-Server
+    image: ha/mca-server:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${MCA_SERVER_PORT:-9178}:9178"
+    environment:
+      <<: *common-env
+      CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
+      RENDERED_CONFIG: /app/config/config.yaml
+      CONFIG_PATH: /app/config/config.yaml
+    volumes:
+      - ./config/mca-server.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
+      - mca-data:/app/data
+    logging: *common-logging
+
+  ha-webui-sdkhandler:
+    build:
+      context: ../HA-WebUI-SDKHandler
+    image: ha/ha-webui-sdkhandler:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${SDKHANDLER_PORT:-2704}:2704"
+      - "${SDKHANDLER_MAINTENANCE_PORT:-2705}:2705"
+    environment:
+      <<: *common-env
+      CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
+      RENDERED_CONFIG: /app/config.yaml
+      SDKHANDLER_CONFIG: /app/config.yaml
+      HRPAUTH_URL: http://hrpauth:2778
+      SDKHANDLER_CLIENT_ID: ${SDKHANDLER_CLIENT_ID}
+      SDKHANDLER_CLIENT_SECRET: ${SDKHANDLER_CLIENT_SECRET}
+      SDKHANDLER_TEMPLATE_DIR: ${SDKHANDLER_TEMPLATE_DIR:-}
+      SDKHANDLER_TEMPLATE_GIT_URL: ${SDKHANDLER_TEMPLATE_GIT_URL:-}
+    volumes:
+      - ./config/sdkhandler.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
+      - ./sdkhandler-template:/app/template:ro
+      - sdkhandler-state:/app/state
+      - sdkhandler-artifacts:/app/artifacts
+      - sdkhandler-work:/app/frontend-build
+    depends_on:
+      - hrpauth
+    logging: *common-logging
+
+  ha-services-deployer:
+    build:
+      context: ../HA-Services-Deployer
+    image: ha/ha-services-deployer:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${DEPLOYER_PORT:-18080}:18080"
+    environment:
+      <<: *common-env
+      CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
+      RENDERED_CONFIG: /app/config.yaml
+    volumes:
+      - ./config/ha-services-deployer.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
+      - deployer-data:/app/data
+    logging: *common-logging
+
+  ha-services-maintenance-view:
+    build:
+      context: ../HA-Services-MaintenanceView
+    image: ha/ha-services-maintenance-view:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${MAINTENANCEVIEW_PORT:-18081}:18081"
+    environment:
+      <<: *common-env
+      CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
+      RENDERED_CONFIG: /app/config.yaml
+      DEPLOYER_URL: http://ha-services-deployer:18080
+      MAINTENANCEVIEW_PUBLIC_URL: ${MAINTENANCEVIEW_PUBLIC_URL}
+    volumes:
+      - ./config/ha-services-maintenance-view.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
+      - maintenanceview-data:/app/data
+    depends_on:
+      - ha-services-deployer
+    logging: *common-logging
+
+volumes:
+  hrpauth-data:
+  hrpauth-storage:
+  hrpauth-cache:
+  ygg-storage:
+  haskinlib-data:
+  mca-data:
+  sdkhandler-state:
+  sdkhandler-artifacts:
+  sdkhandler-work:
+  deployer-data:
+  maintenanceview-data:
