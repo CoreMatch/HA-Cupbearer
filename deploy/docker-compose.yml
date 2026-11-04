@@ -40,8 +40,7 @@ services:
     ports:
       - "${HRPAUTH_PORT:-2778}:2778"
     healthcheck:
-      # 无专用 /health 端点，用根路径元信息接口探活。
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2778/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2778/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -81,8 +80,7 @@ services:
     ports:
       - "${YGG_PORT:-2770}:2770"
     healthcheck:
-      # 无专用 /health 端点（/internal/heartbeat 需 X-Internal-Key），用根路径元信息探活。
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2770/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2770/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -114,8 +112,7 @@ services:
     ports:
       - "${HASKINLIB_PORT:-2701}:2701"
     healthcheck:
-      # 无专用 /health 端点，用公开的 /example 探活（项目侧缺口，见 DEPLOY-PROJECT-GAPS）。
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2701/example || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2701/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -204,14 +201,11 @@ services:
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config/config.yaml
       CONFIG_PATH: /app/config/config.yaml
+      # tokens.yaml（super-admin 凭据）指向持久卷，避免每次重启重新生成。
+      MCA_TOKENS_PATH: /app/data/tokens.yaml
     volumes:
       - ./config/mca-server.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - mca-data:/app/data
-      # MCA 启动时在 <工作目录>/config/tokens.yaml 自动生成/加载运维凭据
-      # （internal/auth/tokens.go）；/app/config 不持久化会导致每次重启
-      # 重新生成 super-admin token，故挂卷持久化（渲染的 config.yaml 也在此，
-      # 每次启动会重新渲染覆盖，无副作用）。
-      - mca-config:/app/config
     logging: *common-logging
 
   ha-webui-sdkhandler:
@@ -347,8 +341,6 @@ volumes:
   # （HASkinProxy 无本地存储，经 HRPAuth 上游代理，不参与该卷。）
   haskin-textures:
   mca-data:
-  # MCA 的 /app/config（tokens.yaml 运维凭据持久化，见服务内注释）。
-  mca-config:
   sdkhandler-state:
   # HA-WebUI-SDKHandler 发布的前端产物；消费方为可选的 ha-webui-nginx
   # （profile: webui）。不启用该 profile 时，卷内产物仅持久保存、无人托管。
