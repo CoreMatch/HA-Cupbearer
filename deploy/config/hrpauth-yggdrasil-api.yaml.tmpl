@@ -1,4 +1,7 @@
-version: "3"
+# version 4 = v3 + manage.token（force-bind 运维令牌）。
+# 注意：manage.token 已被作者判定为过时字段，正从 force-bind 流程中移除，
+# 本模板刻意不写 manage 段（留空待与该项重构同步）；缺失时按代码默认处理。
+version: "4"
 
 callback:
     url: "${YGG_PUBLIC_URL}"
