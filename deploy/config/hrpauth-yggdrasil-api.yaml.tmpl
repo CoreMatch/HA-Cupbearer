@@ -1,6 +1,6 @@
-# version 4 = v3 + manage.token（force-bind 运维令牌）。
-# 注意：manage.token 已被作者判定为过时字段，正从 force-bind 流程中移除，
-# 本模板刻意不写 manage 段（留空待与该项重构同步）；缺失时按代码默认处理。
+# version 4 = v3 + database.port（YGG 配置 v4）。历史上短暂存在过的
+# "v4 = manage.token" 已在上游回退（force-bind 改用 service-token scopes），
+# manage.token 属过时字段，本模板刻意不写 manage 段。
 version: "4"
 
 callback:
@@ -14,9 +14,9 @@ core_api:
 database:
     charset: utf8mb4
     db_name: "${DB_NAME}"
-    # Yggdrasil-API 的 DatabaseConfig 同样没有端口字段，DSN 直接使用 host，
-    # 端口必须内嵌为 "ip:port"（与 HRPAuth 模板同理）。
-    host: "${DB_HOST}:${DB_PORT}"
+    # YGG v4 起有独立端口字段：host 只放主机名/IP，端口走 port（与 HRPAuth 同理）。
+    host: "${DB_HOST}"
+    port: ${DB_PORT}
     password: "${DB_PASSWORD}"
     table_prefix: haygg_
     user: "${DB_USER}"
