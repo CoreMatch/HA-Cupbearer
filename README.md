@@ -101,11 +101,11 @@ It mounts the artifacts volume read-only and applies an SPA fallback
 
 ### Database connection convention
 
-MySQL and Redis are external (not started by the template). HRPAuth and
-Yggdrasil-API have **no separate DB port config field** — their DSN uses the
-host value verbatim — so their templates render `host: "${DB_HOST}:${DB_PORT}"`.
-Keep `DB_HOST` a bare hostname/IP (no port); services with a real port field
-(e.g. MatchCoreArena-Server) use `DB_PORT` directly.
+MySQL and Redis are external (not started by the template). Since HRPAuth
+config v12 and Yggdrasil-API config v4 both have a dedicated `database.port`
+field, the templates render `host: "${DB_HOST}"` plus `port: ${DB_PORT}`.
+Keep `DB_HOST` a bare hostname/IP (no port). Older code without the port
+field still works because its DSN uses the host value verbatim.
 
 ### Secrets to generate and distribute
 
