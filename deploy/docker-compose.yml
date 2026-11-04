@@ -39,6 +39,13 @@ services:
     restart: unless-stopped
     ports:
       - "${HRPAUTH_PORT:-2778}:2778"
+    healthcheck:
+      # 无专用 /health 端点，用根路径元信息接口探活。
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2778/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -59,6 +66,9 @@ services:
       - ./config/hrpauth.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - ./secrets:/app/secrets:ro
       - hrpauth-data:/app/data
+      # DEPRECATED：HRPAuth 自配置 v8 起不再读写 /app/storage（v11 代码中
+      # 无任何引用）。仅为存量部署保留，勿在此卷写入新数据；确认旧数据
+      # 无用后可随升级移除（见 README "Upgrade notes"）。
       - hrpauth-storage:/app/storage
       - hrpauth-cache:/app/cache
     logging: *common-logging
@@ -70,6 +80,13 @@ services:
     restart: unless-stopped
     ports:
       - "${YGG_PORT:-2770}:2770"
+    healthcheck:
+      # 无专用 /health 端点（/internal/heartbeat 需 X-Internal-Key），用根路径元信息探活。
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2770/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -85,7 +102,8 @@ services:
       # YGG 的 textures_storage=./storage，布局为 /app/storage/{textures,previews}。
       - haskin-textures:/app/storage
     depends_on:
-      - hrpauth
+      hrpauth:
+        condition: service_healthy
     logging: *common-logging
 
   haskinlib:
@@ -95,6 +113,13 @@ services:
     restart: unless-stopped
     ports:
       - "${HASKINLIB_PORT:-2701}:2701"
+    healthcheck:
+      # 无专用 /health 端点，用公开的 /example 探活（项目侧缺口，见 DEPLOY-PROJECT-GAPS）。
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2701/example || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -113,6 +138,12 @@ services:
     restart: unless-stopped
     ports:
       - "${HASKINPROXY_PORT:-2702}:2702"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2702/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -122,7 +153,8 @@ services:
       HASKINPROXY_CLIENT_ID: ${HASKINPROXY_CLIENT_ID}
       HASKINPROXY_CLIENT_SECRET: ${HASKINPROXY_CLIENT_SECRET}
     depends_on:
-      - hrpauth
+      hrpauth:
+        condition: service_healthy
     logging: *common-logging
 
   winnerproxy:
@@ -132,6 +164,12 @@ services:
     restart: unless-stopped
     ports:
       - "${WINNERPROXY_PORT:-2777}:2777"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2777/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -142,8 +180,10 @@ services:
       WINNERPROXY_CLIENT_ID: ${WINNERPROXY_CLIENT_ID}
       WINNERPROXY_CLIENT_SECRET: ${WINNERPROXY_CLIENT_SECRET}
     depends_on:
-      - hrpauth
-      - hrpauth-yggdrasil-api
+      hrpauth:
+        condition: service_healthy
+      hrpauth-yggdrasil-api:
+        condition: service_healthy
     logging: *common-logging
 
   mca-server:
@@ -153,6 +193,12 @@ services:
     restart: unless-stopped
     ports:
       - "${MCA_SERVER_PORT:-9178}:9178"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9178/api/status || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -161,6 +207,11 @@ services:
     volumes:
       - ./config/mca-server.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - mca-data:/app/data
+      # MCA 启动时在 <工作目录>/config/tokens.yaml 自动生成/加载运维凭据
+      # （internal/auth/tokens.go）；/app/config 不持久化会导致每次重启
+      # 重新生成 super-admin token，故挂卷持久化（渲染的 config.yaml 也在此，
+      # 每次启动会重新渲染覆盖，无副作用）。
+      - mca-config:/app/config
     logging: *common-logging
 
   ha-webui-sdkhandler:
@@ -174,6 +225,12 @@ services:
       # 并自行配置防火墙；/api/* 另有 X-Internal-Key 保护（未配置时 fail-closed）。
       - "${SDKHANDLER_BIND:-127.0.0.1}:${SDKHANDLER_PORT:-2704}:2704"
       - "${SDKHANDLER_BIND:-127.0.0.1}:${SDKHANDLER_MAINTENANCE_PORT:-2705}:2705"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2704/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -183,16 +240,22 @@ services:
       SDKHANDLER_CLIENT_ID: ${SDKHANDLER_CLIENT_ID}
       SDKHANDLER_CLIENT_SECRET: ${SDKHANDLER_CLIENT_SECRET}
       SDKHANDLER_INTERNAL_KEY: ${SDKHANDLER_INTERNAL_KEY}
-      SDKHANDLER_TEMPLATE_DIR: ${SDKHANDLER_TEMPLATE_DIR:-}
+      # 默认把模板克隆到可写卷 /app/template-src（容器以非 root 运行，
+      # 代码默认值 ../HRPAuth-WebUI 落在根目录、不可写）。预置模板时
+      # 在 .env 设 SDKHANDLER_TEMPLATE_DIR=/app/template（只读挂载）。
+      SDKHANDLER_TEMPLATE_DIR: ${SDKHANDLER_TEMPLATE_DIR:-/app/template-src}
       SDKHANDLER_TEMPLATE_GIT_URL: ${SDKHANDLER_TEMPLATE_GIT_URL:-}
     volumes:
       - ./config/sdkhandler.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - ./sdkhandler-template:/app/template:ro
+      # 自动克隆模板的可写落点（见上方 SDKHANDLER_TEMPLATE_DIR 注释）。
+      - sdkhandler-template-src:/app/template-src
       - sdkhandler-state:/app/state
       - sdkhandler-artifacts:/app/artifacts
       - sdkhandler-work:/app/frontend-build
     depends_on:
-      - hrpauth
+      hrpauth:
+        condition: service_healthy
     logging: *common-logging
 
   ha-services-deployer:
@@ -204,6 +267,12 @@ services:
       # 内部下发服务：MaintenanceView 经 compose 网络访问，默认仅绑定回环。
       # 需要远程下载产物时把 DEPLOYER_BIND 改为 0.0.0.0 并配置防火墙。
       - "${DEPLOYER_BIND:-127.0.0.1}:${DEPLOYER_PORT:-18080}:18080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:18080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -222,6 +291,12 @@ services:
       # 运维面板（半成品、无鉴权）：默认仅绑定回环。
       # 远程访问请用 SSH 隧道；确需直接暴露时改 MAINTENANCEVIEW_BIND 并配防火墙。
       - "${MAINTENANCEVIEW_BIND:-127.0.0.1}:${MAINTENANCEVIEW_PORT:-18081}:18081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:18081/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -232,7 +307,8 @@ services:
       - ./config/ha-services-maintenance-view.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - maintenanceview-data:/app/data
     depends_on:
-      - ha-services-deployer
+      ha-services-deployer:
+        condition: service_healthy
     logging: *common-logging
 
   # 可选的 WebUI 静态托管（profile 门控，默认不启动）。
@@ -254,11 +330,13 @@ services:
       - ./nginx-sdkhandler-artifacts.conf:/etc/nginx/conf.d/default.conf:ro
       - sdkhandler-artifacts:/usr/share/nginx/html:ro
     depends_on:
-      - ha-webui-sdkhandler
+      ha-webui-sdkhandler:
+        condition: service_healthy
     logging: *common-logging
 
 volumes:
   hrpauth-data:
+  # DEPRECATED（见 hrpauth 服务挂载处注释与 README "Upgrade notes"）。
   hrpauth-storage:
   hrpauth-cache:
   # HASkinLib 与 Yggdrasil-API 共用的纹理/预览存储（同一份内容，两个挂载点）：
@@ -269,10 +347,14 @@ volumes:
   # （HASkinProxy 无本地存储，经 HRPAuth 上游代理，不参与该卷。）
   haskin-textures:
   mca-data:
+  # MCA 的 /app/config（tokens.yaml 运维凭据持久化，见服务内注释）。
+  mca-config:
   sdkhandler-state:
   # HA-WebUI-SDKHandler 发布的前端产物；消费方为可选的 ha-webui-nginx
   # （profile: webui）。不启用该 profile 时，卷内产物仅持久保存、无人托管。
   sdkhandler-artifacts:
   sdkhandler-work:
+  # SDKHandler 自动克隆前端模板的可写落点（默认 SDKHANDLER_TEMPLATE_DIR）。
+  sdkhandler-template-src:
   deployer-data:
   maintenanceview-data:
