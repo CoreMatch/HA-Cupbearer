@@ -207,6 +207,11 @@ services:
     volumes:
       - ./config/mca-server.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - mca-data:/app/data
+      # MCA 启动时在 <工作目录>/config/tokens.yaml 自动生成/加载运维凭据
+      # （internal/auth/tokens.go）；/app/config 不持久化会导致每次重启
+      # 重新生成 super-admin token，故挂卷持久化（渲染的 config.yaml 也在此，
+      # 每次启动会重新渲染覆盖，无副作用）。
+      - mca-config:/app/config
     logging: *common-logging
 
   ha-webui-sdkhandler:
@@ -235,11 +240,16 @@ services:
       SDKHANDLER_CLIENT_ID: ${SDKHANDLER_CLIENT_ID}
       SDKHANDLER_CLIENT_SECRET: ${SDKHANDLER_CLIENT_SECRET}
       SDKHANDLER_INTERNAL_KEY: ${SDKHANDLER_INTERNAL_KEY}
-      SDKHANDLER_TEMPLATE_DIR: ${SDKHANDLER_TEMPLATE_DIR:-}
+      # 默认把模板克隆到可写卷 /app/template-src（容器以非 root 运行，
+      # 代码默认值 ../HRPAuth-WebUI 落在根目录、不可写）。预置模板时
+      # 在 .env 设 SDKHANDLER_TEMPLATE_DIR=/app/template（只读挂载）。
+      SDKHANDLER_TEMPLATE_DIR: ${SDKHANDLER_TEMPLATE_DIR:-/app/template-src}
       SDKHANDLER_TEMPLATE_GIT_URL: ${SDKHANDLER_TEMPLATE_GIT_URL:-}
     volumes:
       - ./config/sdkhandler.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - ./sdkhandler-template:/app/template:ro
+      # 自动克隆模板的可写落点（见上方 SDKHANDLER_TEMPLATE_DIR 注释）。
+      - sdkhandler-template-src:/app/template-src
       - sdkhandler-state:/app/state
       - sdkhandler-artifacts:/app/artifacts
       - sdkhandler-work:/app/frontend-build
@@ -337,10 +347,14 @@ volumes:
   # （HASkinProxy 无本地存储，经 HRPAuth 上游代理，不参与该卷。）
   haskin-textures:
   mca-data:
+  # MCA 的 /app/config（tokens.yaml 运维凭据持久化，见服务内注释）。
+  mca-config:
   sdkhandler-state:
   # HA-WebUI-SDKHandler 发布的前端产物；消费方为可选的 ha-webui-nginx
   # （profile: webui）。不启用该 profile 时，卷内产物仅持久保存、无人托管。
   sdkhandler-artifacts:
   sdkhandler-work:
+  # SDKHandler 自动克隆前端模板的可写落点（默认 SDKHANDLER_TEMPLATE_DIR）。
+  sdkhandler-template-src:
   deployer-data:
   maintenanceview-data:
