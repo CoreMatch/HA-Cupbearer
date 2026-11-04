@@ -81,7 +81,9 @@ services:
     volumes:
       - ./config/hrpauth-yggdrasil-api.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - ./secrets:/app/secrets:ro
-      - ygg-storage:/app/storage
+      # 与 haskinlib 共享同一份纹理存储（见 volumes.haskin-textures 注释）：
+      # YGG 的 textures_storage=./storage，布局为 /app/storage/{textures,previews}。
+      - haskin-textures:/app/storage
     depends_on:
       - hrpauth
     logging: *common-logging
@@ -99,7 +101,9 @@ services:
       RENDERED_CONFIG: /app/config.yaml
     volumes:
       - ./config/haskinlib.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
-      - haskinlib-data:/app/data
+      # 与 hrpauth-yggdrasil-api 共享同一份纹理存储（见 volumes.haskin-textures 注释）：
+      # skinlib 上传写入 ./data/{textures,previews}，即卷内 /app/data/{textures,previews}。
+      - haskin-textures:/app/data
     logging: *common-logging
 
   haskinproxy:
@@ -257,8 +261,13 @@ volumes:
   hrpauth-data:
   hrpauth-storage:
   hrpauth-cache:
-  ygg-storage:
-  haskinlib-data:
+  # HASkinLib 与 Yggdrasil-API 共用的纹理/预览存储（同一份内容，两个挂载点）：
+  #   - haskinlib 挂载到 /app/data，配置路径 ./data/textures、./data/previews；
+  #   - yggdrasil-api 挂载到 /app/storage，配置 textures_storage: ./storage，
+  #     实际读写 ./storage/textures、./storage/previews。
+  # 两者指向同一卷内同一目录结构，保证"上传后游戏内可见"。
+  # （HASkinProxy 无本地存储，经 HRPAuth 上游代理，不参与该卷。）
+  haskin-textures:
   mca-data:
   sdkhandler-state:
   # HA-WebUI-SDKHandler 发布的前端产物；消费方为可选的 ha-webui-nginx
