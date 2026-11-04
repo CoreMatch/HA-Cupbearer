@@ -54,14 +54,14 @@ Record the arrangement and its boundary:
   (`deploy/docker-compose.yml`, per-service `ports` blocks).
 - Secrets (`private_key.pem`/`public_key.pem`) must be placed into
   `deploy/secrets/` manually; `.env.example` documents this
-  (`deploy/.env.example:61-63`).
+  (`deploy/.env.example:64-66`).
 - Working-tree note at time of writing: the uncommitted local `README.md`
   edit removes the compose documentation section; the committed README at
   HEAD (`657bcb8`) documents `deploy/`. Recorded, no action taken.
 
 ## Evidence
 
-- `deploy/docker-compose.yml` — full orchestration; service list and build contexts at lines 34-224; external DB/Redis note at lines 7-10.
+- `deploy/docker-compose.yml` — full orchestration; service list and build contexts at lines 34-225; external DB/Redis note at lines 7-10.
 - `deploy/.env.example` — deployment-scoped values.
 - `deploy/config/*.yaml.tmpl` — per-service config templates.
 - `docker-entrypoint.sh:6-8` — envsubst rendering.
