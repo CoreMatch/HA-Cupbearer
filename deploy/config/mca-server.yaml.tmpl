@@ -1,4 +1,4 @@
-version: "1.0.0"
+version: "1.4.0"
 
 server:
   host: "0.0.0.0"
@@ -20,3 +20,15 @@ redis:
   port: ${REDIS_PORT}
   password: "${REDIS_PASSWORD}"
   db: ${REDIS_DB}
+
+# v1.1.0~v1.4.0 迁移新增的 auth 块（1.2.0 收敛为 base_url 单字段，
+# 1.3.0 增加 public_client_id，1.4.0 增加 maintenance_token）。
+auth:
+  hrpauth:
+    # HRPAuth 根地址；compose 网络内直连。
+    base_url: "${HRPAUTH_URL}"
+    # OAuth2 public client_id（第一方 refresh_token 流程），与 HRPAuth 对齐。
+    public_client_id: "${HRPAUTH_PUBLIC_CLIENT_ID}"
+  # 运维超级凭据。代码迁移在缺失时会自动生成随机值，但容器内配置
+  # 非持久，重启即变，故显式由 .env 注入（MCA_MAINTENANCE_TOKEN）。
+  maintenance_token: "${MCA_MAINTENANCE_TOKEN}"

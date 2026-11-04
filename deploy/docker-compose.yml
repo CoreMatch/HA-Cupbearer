@@ -81,7 +81,9 @@ services:
     volumes:
       - ./config/hrpauth-yggdrasil-api.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - ./secrets:/app/secrets:ro
-      - ygg-storage:/app/storage
+      # 与 haskinlib 共享同一份纹理存储（见 volumes.haskin-textures 注释）：
+      # YGG 的 textures_storage=./storage，布局为 /app/storage/{textures,previews}。
+      - haskin-textures:/app/storage
     depends_on:
       - hrpauth
     logging: *common-logging
@@ -99,7 +101,9 @@ services:
       RENDERED_CONFIG: /app/config.yaml
     volumes:
       - ./config/haskinlib.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
-      - haskinlib-data:/app/data
+      # 与 hrpauth-yggdrasil-api 共享同一份纹理存储（见 volumes.haskin-textures 注释）：
+      # skinlib 上传写入 ./data/{textures,previews}，即卷内 /app/data/{textures,previews}。
+      - haskin-textures:/app/data
     logging: *common-logging
 
   haskinproxy:
@@ -165,8 +169,11 @@ services:
     image: ha/ha-webui-sdkhandler:${VERSION:-latest}
     restart: unless-stopped
     ports:
-      - "${SDKHANDLER_PORT:-2704}:2704"
-      - "${SDKHANDLER_MAINTENANCE_PORT:-2705}:2705"
+      # 内部构建服务：默认仅绑定回环，服务间调用走 compose 网络，无需宿主暴露。
+      # 确需远程维护时：把 SDKHANDLER_BIND 设为 0.0.0.0（或指定网卡 IP），
+      # 并自行配置防火墙；/api/* 另有 X-Internal-Key 保护（未配置时 fail-closed）。
+      - "${SDKHANDLER_BIND:-127.0.0.1}:${SDKHANDLER_PORT:-2704}:2704"
+      - "${SDKHANDLER_BIND:-127.0.0.1}:${SDKHANDLER_MAINTENANCE_PORT:-2705}:2705"
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -194,7 +201,9 @@ services:
     image: ha/ha-services-deployer:${VERSION:-latest}
     restart: unless-stopped
     ports:
-      - "${DEPLOYER_PORT:-18080}:18080"
+      # 内部下发服务：MaintenanceView 经 compose 网络访问，默认仅绑定回环。
+      # 需要远程下载产物时把 DEPLOYER_BIND 改为 0.0.0.0 并配置防火墙。
+      - "${DEPLOYER_BIND:-127.0.0.1}:${DEPLOYER_PORT:-18080}:18080"
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -210,7 +219,9 @@ services:
     image: ha/ha-services-maintenance-view:${VERSION:-latest}
     restart: unless-stopped
     ports:
-      - "${MAINTENANCEVIEW_PORT:-18081}:18081"
+      # 运维面板（半成品、无鉴权）：默认仅绑定回环。
+      # 远程访问请用 SSH 隧道；确需直接暴露时改 MAINTENANCEVIEW_BIND 并配防火墙。
+      - "${MAINTENANCEVIEW_BIND:-127.0.0.1}:${MAINTENANCEVIEW_PORT:-18081}:18081"
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -224,14 +235,43 @@ services:
       - ha-services-deployer
     logging: *common-logging
 
+  # 可选的 WebUI 静态托管（profile 门控，默认不启动）。
+  # 启用方式: docker compose --profile webui up -d
+  # 说明:
+  #   - 只读挂载 sdkhandler-artifacts 卷 —— 即 HA-WebUI-SDKHandler 发布的
+  #     前端产物；这是"构建与托管分离"设计中产物的消费方。
+  #   - SPA fallback 由 deploy/nginx-sdkhandler-artifacts.conf 提供
+  #     （非文件路径回落 index.html）。
+  #   - 该服务是对外前端入口，默认监听所有网卡（WEBUI_BIND 可改 127.0.0.1
+  #     仅限内网）；端口 WEBUI_PORT 默认 8080。
+  ha-webui-nginx:
+    image: nginx:1.27-alpine
+    profiles: ["webui"]
+    restart: unless-stopped
+    ports:
+      - "${WEBUI_BIND:-0.0.0.0}:${WEBUI_PORT:-8080}:80"
+    volumes:
+      - ./nginx-sdkhandler-artifacts.conf:/etc/nginx/conf.d/default.conf:ro
+      - sdkhandler-artifacts:/usr/share/nginx/html:ro
+    depends_on:
+      - ha-webui-sdkhandler
+    logging: *common-logging
+
 volumes:
   hrpauth-data:
   hrpauth-storage:
   hrpauth-cache:
-  ygg-storage:
-  haskinlib-data:
+  # HASkinLib 与 Yggdrasil-API 共用的纹理/预览存储（同一份内容，两个挂载点）：
+  #   - haskinlib 挂载到 /app/data，配置路径 ./data/textures、./data/previews；
+  #   - yggdrasil-api 挂载到 /app/storage，配置 textures_storage: ./storage，
+  #     实际读写 ./storage/textures、./storage/previews。
+  # 两者指向同一卷内同一目录结构，保证"上传后游戏内可见"。
+  # （HASkinProxy 无本地存储，经 HRPAuth 上游代理，不参与该卷。）
+  haskin-textures:
   mca-data:
   sdkhandler-state:
+  # HA-WebUI-SDKHandler 发布的前端产物；消费方为可选的 ha-webui-nginx
+  # （profile: webui）。不启用该 profile 时，卷内产物仅持久保存、无人托管。
   sdkhandler-artifacts:
   sdkhandler-work:
   deployer-data:
