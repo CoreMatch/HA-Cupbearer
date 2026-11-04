@@ -165,8 +165,11 @@ services:
     image: ha/ha-webui-sdkhandler:${VERSION:-latest}
     restart: unless-stopped
     ports:
-      - "${SDKHANDLER_PORT:-2704}:2704"
-      - "${SDKHANDLER_MAINTENANCE_PORT:-2705}:2705"
+      # 内部构建服务：默认仅绑定回环，服务间调用走 compose 网络，无需宿主暴露。
+      # 确需远程维护时：把 SDKHANDLER_BIND 设为 0.0.0.0（或指定网卡 IP），
+      # 并自行配置防火墙；/api/* 另有 X-Internal-Key 保护（未配置时 fail-closed）。
+      - "${SDKHANDLER_BIND:-127.0.0.1}:${SDKHANDLER_PORT:-2704}:2704"
+      - "${SDKHANDLER_BIND:-127.0.0.1}:${SDKHANDLER_MAINTENANCE_PORT:-2705}:2705"
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -194,7 +197,9 @@ services:
     image: ha/ha-services-deployer:${VERSION:-latest}
     restart: unless-stopped
     ports:
-      - "${DEPLOYER_PORT:-18080}:18080"
+      # 内部下发服务：MaintenanceView 经 compose 网络访问，默认仅绑定回环。
+      # 需要远程下载产物时把 DEPLOYER_BIND 改为 0.0.0.0 并配置防火墙。
+      - "${DEPLOYER_BIND:-127.0.0.1}:${DEPLOYER_PORT:-18080}:18080"
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
@@ -210,7 +215,9 @@ services:
     image: ha/ha-services-maintenance-view:${VERSION:-latest}
     restart: unless-stopped
     ports:
-      - "${MAINTENANCEVIEW_PORT:-18081}:18081"
+      # 运维面板（半成品、无鉴权）：默认仅绑定回环。
+      # 远程访问请用 SSH 隧道；确需直接暴露时改 MAINTENANCEVIEW_BIND 并配防火墙。
+      - "${MAINTENANCEVIEW_BIND:-127.0.0.1}:${MAINTENANCEVIEW_PORT:-18081}:18081"
     environment:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
