@@ -32,12 +32,14 @@ Record the arrangement and its boundary:
   requires all sibling repos checked out side by side.
 - **MySQL and Redis are external.** The template does not start them;
   services read `DB_*` / `REDIS_*` from `.env`
-  (`deploy/docker-compose.yml:15-26`, `deploy/.env.example:13-24`).
+  (`deploy/docker-compose.yml (field: x-common-env)`,
+  `deploy/.env.example (field: DB_HOST)`,
+  `deploy/.env.example (field: REDIS_HOST)`).
 - **Config rendering.** Each service container receives
   `CONFIG_TEMPLATE`/`RENDERED_CONFIG` and its entrypoint renders the YAML
   template with `envsubst` before start (this repo's
-  `docker-entrypoint.sh:6-8`; the same script is duplicated in the sibling
-  repos). All mutable values therefore flow from `.env`.
+  `docker-entrypoint.sh::envsubst`; the same script is duplicated in the
+  sibling repos). All mutable values therefore flow from `.env`.
 - **Boundary statement:** `deploy/` is deployment tooling. It is not part of
   the deployer service's runtime API surface (0001) and is not covered by the
   version-manifest contract. Changes to `deploy/` do not change service
@@ -54,15 +56,18 @@ Record the arrangement and its boundary:
   (`deploy/docker-compose.yml`, per-service `ports` blocks).
 - Secrets (`private_key.pem`/`public_key.pem`) must be placed into
   `deploy/secrets/` manually; `.env.example` documents this
-  (`deploy/.env.example:64-66`).
+  (`deploy/.env.example (field: SIGNATURE_KEY_DIR)`).
 - Working-tree note at time of writing: the uncommitted local `README.md`
   edit removes the compose documentation section; the committed README at
   HEAD (`657bcb8`) documents `deploy/`. Recorded, no action taken.
 
 ## Evidence
 
-- `deploy/docker-compose.yml` — full orchestration; service list and build contexts at lines 34-225; external DB/Redis note at lines 7-10.
+- `deploy/docker-compose.yml` — full orchestration; service list and build
+  contexts (`deploy/docker-compose.yml (field: services)`,
+  `deploy/docker-compose.yml (field: context: ../)`); external DB/Redis note
+  (`deploy/docker-compose.yml (field: MySQL / Redis)`).
 - `deploy/.env.example` — deployment-scoped values.
 - `deploy/config/*.yaml.tmpl` — per-service config templates.
-- `docker-entrypoint.sh:6-8` — envsubst rendering.
+- `docker-entrypoint.sh::envsubst` — envsubst rendering.
 - Commits: `e1a42cd` (container image + compose template), `657bcb8` (README documentation of the compose template).
