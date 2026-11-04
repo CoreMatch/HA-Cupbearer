@@ -1,4 +1,4 @@
-version: "6"
+version: "11"
 
 server:
     port: :2778
@@ -10,6 +10,12 @@ database:
     host: "${DB_HOST}"
     password: "${DB_PASSWORD}"
     user: "${DB_USER}"
+    # v11 新增（v10->v11 迁移项，此处取代码默认值）：
+    # 连接失败后每隔 retry_interval_sec 秒重试，最多 max_retries 次；
+    # 仍失败则等待 next_round_delay_min 分钟后开启下一轮（0 = 不再重试）。
+    retry_interval_sec: 3
+    max_retries: 5
+    next_round_delay_min: 5
 
 redis:
     db: ${REDIS_DB}
@@ -17,9 +23,6 @@ redis:
     password: "${REDIS_PASSWORD}"
     port: ${REDIS_PORT}
     prefix: hrpauth_
-
-storage:
-    orphan_file_expiry_days: 7
 
 verification_code:
     code_ttl: 600
@@ -47,9 +50,6 @@ callback:
 frontend:
     url: "${HRPAUTH_FRONTEND_URL}"
 
-keygen:
-    enable: 0
-
 manage:
     token: "${MANAGE_TOKEN}"
 
@@ -63,33 +63,26 @@ oauth2:
     refresh_token_ttl_sec: 2592000
     super_client_id: "${HRPAUTH_SUPER_CLIENT_ID}"
     super_client_secret: "${HRPAUTH_SUPER_CLIENT_SECRET}"
+    # v7 新增（v6->v7 迁移项）：超级客户端额外授权范围，默认空。
+    super_client_extra_scopes: []
+
+# v8 引入（v7->v8 迁移）：解耦后的 Yggdrasil-API 服务地址。
+# 心跳等主程序 -> Yggdrasil-API 调用使用该地址；compose 网络内直连。
+yggdrasil_api:
+    base_url: "http://hrpauth-yggdrasil-api:2770"
+
+# v9 新增（v8->v9 迁移项）：SDK 源码头包代理存储（供 HA-WebUI-SDKHandler 拉取）。
+# 值取代码默认；目录位于 hrpauth-data 卷内（/app/data）。
+sdk_packages:
+    storage_dir: ./data/sdk_packages
+    max_package_size: 20971520
+    max_packages: 128
 
 site:
     implementation: HRPAuth service
     name: HRPAuth
     version: "6"
 
-yggdrasil:
-    feature_flags:
-        enable_mojang_anti_features: false
-        enable_profile_key: false
-        legacy_skin_api: true
-        no_mojang_namespace: false
-        non_email_login: true
-        username_check: true
-    security:
-        max_texture_height: 1024
-        max_texture_width: 1024
-        session_expiry_seconds: 28800
-        token_expiry_days: 15
-    server:
-        implementation: HRPAuth service
-        links:
-            homepage: ""
-            register: ""
-        name: HRPAuth
-        signature_private_key_path: "${SIGNATURE_KEY_DIR}/private_key.pem"
-        signature_public_key_path: "${SIGNATURE_KEY_DIR}/public_key.pem"
-        skin_domains: []
-        textures_storage: ./
-        version: "6"
+# 注意：v6 模板中的 storage / keygen / yggdrasil 三个段已在 v7->v8 迁移中
+# 移除，v11 代码不再解析它们（feature_flags、签名密钥路径等已迁出主服务配置），
+# 因此此处不再保留。
