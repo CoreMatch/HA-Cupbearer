@@ -59,6 +59,9 @@ services:
       - ./config/hrpauth.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - ./secrets:/app/secrets:ro
       - hrpauth-data:/app/data
+      # DEPRECATED：HRPAuth 自配置 v8 起不再读写 /app/storage（v11 代码中
+      # 无任何引用）。仅为存量部署保留，勿在此卷写入新数据；确认旧数据
+      # 无用后可随升级移除（见 README "Upgrade notes"）。
       - hrpauth-storage:/app/storage
       - hrpauth-cache:/app/cache
     logging: *common-logging
@@ -259,6 +262,7 @@ services:
 
 volumes:
   hrpauth-data:
+  # DEPRECATED（见 hrpauth 服务挂载处注释与 README "Upgrade notes"）。
   hrpauth-storage:
   hrpauth-cache:
   # HASkinLib 与 Yggdrasil-API 共用的纹理/预览存储（同一份内容，两个挂载点）：
