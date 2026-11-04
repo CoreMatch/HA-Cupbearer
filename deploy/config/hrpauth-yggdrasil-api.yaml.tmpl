@@ -14,7 +14,9 @@ core_api:
 database:
     charset: utf8mb4
     db_name: "${DB_NAME}"
-    host: "${DB_HOST}"
+    # Yggdrasil-API 的 DatabaseConfig 同样没有端口字段，DSN 直接使用 host，
+    # 端口必须内嵌为 "ip:port"（与 HRPAuth 模板同理）。
+    host: "${DB_HOST}:${DB_PORT}"
     password: "${DB_PASSWORD}"
     table_prefix: haygg_
     user: "${DB_USER}"

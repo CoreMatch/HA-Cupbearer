@@ -7,7 +7,10 @@ server:
 database:
     charset: utf8mb4
     db_name: "${DB_NAME}"
-    host: "${DB_HOST}"
+    # HRPAuth 的 DatabaseConfig 没有独立端口字段，DSN 直接使用 host
+    # （database/database.go），因此端口必须内嵌为 "ip:port" 写法。
+    # .env 的 DB_HOST 只填主机名/IP，不要自带端口。
+    host: "${DB_HOST}:${DB_PORT}"
     password: "${DB_PASSWORD}"
     user: "${DB_USER}"
     # v11 新增（v10->v11 迁移项，此处取代码默认值）：
