@@ -3,7 +3,10 @@ version: "6"
 database:
     charset: utf8mb4
     db_name: "${DB_NAME}"
-    host: "${DB_HOST}"
+    # HASkinLib 的 DatabaseConfig 没有端口字段（DSN 直接使用 host），
+    # 端口以内嵌 "ip:port" 写法下发（与 HRPAuth/YGG 增加端口字段前的方案一致）。
+    # 项目侧补端口字段后改回 host + port 两字段（见 DEPLOY-PROJECT-GAPS）。
+    host: "${DB_HOST}:${DB_PORT}"
     password: "${DB_PASSWORD}"
     table_prefix: hasl_
     user: "${DB_USER}"
