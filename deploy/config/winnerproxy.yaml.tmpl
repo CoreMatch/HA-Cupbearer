@@ -20,7 +20,7 @@ hrpauth:
     # 1) 填 super 凭据（当前 compose 默认：注入 HRPAUTH_SUPER_CLIENT_ID/SECRET）：
     #    启动时经 POST /oauth/register 换取本服务低权限客户端
     #    （client_id = presence 名 WinnerProxy），super 凭据只用于换取那一次调用；
-    # 2) 填已预置的低权限配对（如 hrpauth service_clients 种子的 winnerproxy）：
+    # 2) 填已预置的低权限配对（如 hrpauth service_clients 种子的 WinnerProxy 行）：
     #    启动只做幂等校验（client_credentials 令牌请求），不发换取请求。
     # 容器部署注意：本文件是容器启动时由模板渲染的一次性配置，换取成功后的
     # 写回不会跨重启持久化，每次启动都会重新换取——HRPAuth get-or-create
