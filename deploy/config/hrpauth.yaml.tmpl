@@ -1,4 +1,4 @@
-version: "12"
+version: "13"
 
 server:
     port: :2778
@@ -67,6 +67,26 @@ oauth2:
     super_client_secret: "${HRPAUTH_SUPER_CLIENT_SECRET}"
     # v7 新增（v6->v7 迁移项）：超级客户端额外授权范围，默认空。
     super_client_extra_scopes: []
+    # v13 新增（v12->v13 迁移项）：服务客户端种子列表。启动时幂等登记到
+    # oauth2_clients（confidential / client_credentials / is_super=false）；
+    # 已存在的行不会被覆盖（secret 漂移只告警，需人工对账）。
+    # 每对的 client_id/client_secret 与对应服务自己配置中的凭据同源
+    # （同一个 .env 变量），保证"种子里的 secret"与"服务拿来换令牌的
+    # secret"永远一致。MCA 不在此列：它继续共用 super client（作者口径：
+    # 开发环境共用即可）。
+    service_clients:
+        - client_id: "${WINNERPROXY_CLIENT_ID}"
+          client_secret: "${WINNERPROXY_CLIENT_SECRET}"
+          name: WinnerProxy
+        - client_id: "${YGG_CLIENT_ID}"
+          client_secret: "${YGG_CLIENT_SECRET}"
+          name: HRPAuth-Yggdrasil-API
+        - client_id: "${HASKINPROXY_CLIENT_ID}"
+          client_secret: "${HASKINPROXY_CLIENT_SECRET}"
+          name: HASkinProxy
+        - client_id: "${SDKHANDLER_CLIENT_ID}"
+          client_secret: "${SDKHANDLER_CLIENT_SECRET}"
+          name: HA-WebUI-SDKHandler
 
 # v8 引入（v7->v8 迁移）：解耦后的 Yggdrasil-API 服务地址。
 # 心跳等主程序 -> Yggdrasil-API 调用使用该地址；compose 网络内直连。
