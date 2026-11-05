@@ -172,7 +172,11 @@ services:
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yml
       HRPAUTH_URL: http://hrpauth:2778
-      HRPAUTH_YGG_URL: http://hrpauth-yggdrasil-api:2770/yggdrasil-api/
+      # 直连 Yggdrasil-API 微服务容器，不带 relay 前缀：微服务本身提供
+      # 无前缀路由，/yggdrasil-api 前缀只在经 HRPAuth 核心 relay（:2778）
+      # 时才需要（作者 2026-11-05 拍板：以默认设置为准；
+      # 见 WinnerProxy knowledge/0004 第 5 项）。
+      HRPAUTH_YGG_URL: http://hrpauth-yggdrasil-api:2770
       WINNERPROXY_PUBLIC_URL: ${WINNERPROXY_PUBLIC_URL}
       WINNERPROXY_CLIENT_ID: ${WINNERPROXY_CLIENT_ID}
       WINNERPROXY_CLIENT_SECRET: ${WINNERPROXY_CLIENT_SECRET}
