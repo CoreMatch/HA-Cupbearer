@@ -55,6 +55,18 @@ services:
       HRPAUTH_PUBLIC_CLIENT_ID: ${HRPAUTH_PUBLIC_CLIENT_ID}
       HRPAUTH_SUPER_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID}
       HRPAUTH_SUPER_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET}
+      # v13 oauth2.service_clients 种子：四个卫星服务的专用客户端凭据。
+      # 每对变量与对应服务自己配置中的凭据同源（同一个 .env 变量），
+      # 保证"种子里的 secret"与"服务换令牌用的 secret"永远一致。
+      # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
+      WINNERPROXY_CLIENT_ID: ${WINNERPROXY_CLIENT_ID:?hrpauth requires WINNERPROXY_CLIENT_ID (oauth2.service_clients seed)}
+      WINNERPROXY_CLIENT_SECRET: ${WINNERPROXY_CLIENT_SECRET:?hrpauth requires WINNERPROXY_CLIENT_SECRET (oauth2.service_clients seed)}
+      YGG_CLIENT_ID: ${YGG_CLIENT_ID:?hrpauth requires YGG_CLIENT_ID (oauth2.service_clients seed)}
+      YGG_CLIENT_SECRET: ${YGG_CLIENT_SECRET:?hrpauth requires YGG_CLIENT_SECRET (oauth2.service_clients seed)}
+      HASKINPROXY_CLIENT_ID: ${HASKINPROXY_CLIENT_ID:?hrpauth requires HASKINPROXY_CLIENT_ID (oauth2.service_clients seed)}
+      HASKINPROXY_CLIENT_SECRET: ${HASKINPROXY_CLIENT_SECRET:?hrpauth requires HASKINPROXY_CLIENT_SECRET (oauth2.service_clients seed)}
+      SDKHANDLER_CLIENT_ID: ${SDKHANDLER_CLIENT_ID:?hrpauth requires SDKHANDLER_CLIENT_ID (oauth2.service_clients seed)}
+      SDKHANDLER_CLIENT_SECRET: ${SDKHANDLER_CLIENT_SECRET:?hrpauth requires SDKHANDLER_CLIENT_SECRET (oauth2.service_clients seed)}
       MANAGE_TOKEN: ${MANAGE_TOKEN}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-25}
