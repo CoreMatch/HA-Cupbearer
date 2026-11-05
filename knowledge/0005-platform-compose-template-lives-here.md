@@ -11,9 +11,8 @@ Accepted (records current state and boundary)
 ## Context
 
 Besides the deployer service itself, this repository hosts the Compose
-template that orchestrates the whole HA platform in containers, added in
-commit `e1a42cd` (2026-11-03) and documented in `README.md` in commit
-`657bcb8` (2026-11-04).
+template that orchestrates the whole HA platform in containers, documented
+in `README.md`.
 
 ## Decision
 
@@ -21,7 +20,8 @@ Record the arrangement and its boundary:
 
 - Location: `deploy/` — `docker-compose.yml` (Compose project
   `ha-platform`), `.env.example`, `config/*.yaml.tmpl` per service,
-  `secrets/` (signature keys), `sdkhandler-template/`.
+  `nginx-sdkhandler-artifacts.conf` (SPA fallback for the optional `webui`
+  profile), `secrets/` (signature keys), `sdkhandler-template/`.
 - **Build contexts point at sibling repositories** next to this one
   (`deploy/docker-compose.yml`: `../HRPAuth`, `../HRPAuth-Yggdrasil-API`,
   `../HASkinLib`, `../HASkinProxy`, `../WinnerProxy`,
@@ -51,15 +51,15 @@ Record the arrangement and its boundary:
   cloning only this repo cannot build the platform; the sibling repos are
   mandatory.
 - Port defaults in compose: hrpauth 2778, yggdrasil-api 2770, haskinlib
-  2701, haskinproxy 2702, winnerproxy 2777, mca-server 9178, sdkhandler
-  2704/2705, deployer 18080, maintenance-view 18081
+  2701, haskinproxy 2702, winnerproxy 2777, mca-server 9178 listen on all
+  interfaces; sdkhandler 2704/2705, deployer 18080, and maintenance-view
+  18081 are loopback-bound by default (`SDKHANDLER_BIND` / `DEPLOYER_BIND` /
+  `MAINTENANCEVIEW_BIND` override the bind address). The optional `webui`
+  profile adds an nginx sidecar on 8080 serving the built frontend
   (`deploy/docker-compose.yml`, per-service `ports` blocks).
 - Secrets (`private_key.pem`/`public_key.pem`) must be placed into
   `deploy/secrets/` manually; `.env.example` documents this
   (`deploy/.env.example (field: SIGNATURE_KEY_DIR)`).
-- Working-tree note at time of writing: the uncommitted local `README.md`
-  edit removes the compose documentation section; the committed README at
-  HEAD (`657bcb8`) documents `deploy/`. Recorded, no action taken.
 
 ## Evidence
 
@@ -69,5 +69,5 @@ Record the arrangement and its boundary:
   (`deploy/docker-compose.yml (field: MySQL / Redis)`).
 - `deploy/.env.example` — deployment-scoped values.
 - `deploy/config/*.yaml.tmpl` — per-service config templates.
+- `deploy/nginx-sdkhandler-artifacts.conf` — SPA fallback for the `webui` profile.
 - `docker-entrypoint.sh::envsubst` — envsubst rendering.
-- Commits: `e1a42cd` (container image + compose template), `657bcb8` (README documentation of the compose template).

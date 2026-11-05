@@ -11,9 +11,7 @@ Accepted (records current state)
 ## Context
 
 The service reads `config.yaml` from the working directory
-(`main.go::main`). A versioning/migration framework was added in commit
-`9b937e1` (2026-10-17), and the previously shipped `config.example.yaml` was
-removed in commit `a606997` (2026-11-04).
+(`main.go::main`).
 
 ## Decision
 
@@ -29,11 +27,9 @@ Record the verified shape:
   - `server.listen: ":2770"`
   - `storage.artifacts_root: "./data/artifacts"`
   - `manifest.path: "./data/manifest.json"`
-- **The example file is gone.** `a606997` deleted `config.example.yaml` and
-  updated the README quick start to describe auto-generation instead
-  (`README.md:L21-L28`). There is no shipped sample config for the service
-  itself anymore; `examples/manifest.v1.json` is a manifest sample, not a
-  service config.
+- **No sample service config is shipped.** The README quick start describes
+  the auto-generated defaults instead (`README.md:L21-L28`);
+  `examples/manifest.v1.json` is a manifest sample, not a service config.
 - **Migration framework at version "1" with an empty chain.**
   `ConfigVersion = "1"` (`internal/config/migrations.go::ConfigVersion`);
   `configMigrations()` returns no migrations yet
@@ -75,7 +71,6 @@ Record the verified shape:
   `internal/config/migrations.go::configMigrations`,
   `internal/config/migrations.go::MigrateConfig`,
   `internal/config/migrations.go::BackupConfigFile`.
-- Commits: `9b937e1` (versioning/migrations), `a606997` (remove config.example.yaml), `e4a2d12` (merge of that branch).
 - Deployment: `deploy/config/ha-services-deployer.yaml.tmpl (field: listen)`,
   `deploy/docker-compose.yml (field: DEPLOYER_PORT)` (deployer service
   block), `Dockerfile:L21`.

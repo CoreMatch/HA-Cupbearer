@@ -35,7 +35,7 @@ Verified serving behavior:
   {binary, archive, asset}, non-empty file_name, lowercase 64-hex sha256,
   size_bytes ≥ 0, and download_path relative and non-escaping
   (`internal/models/manifest.go::validateDownloadPath`).
-- `GET /api/v1/projects` (commit `67b873d`) projects the manifest to
+- `GET /api/v1/projects` projects the manifest to
   release-oriented entries keeping only `role == "binary"` artifacts, under a
   top-level `projects` key with `generated_at`
   (`internal/models/manifest.go::Projects`,
@@ -45,11 +45,11 @@ Verified serving behavior:
 
 ## Consequences (including recorded drift)
 
-- **README drift.** The committed `README.md` "API skeleton"
+- **README drift.** The `README.md` "API skeleton"
   (`README.md:L35-L40`) lists only `/healthz`, `/api/v1/healthz`,
   `/api/v1/manifest`, `/api/v1/artifacts/:service/*filepath` and omits
   `/api/v1/projects`. The contract lists it; the README does not. Recorded
-  as-is; the README is not modified by this knowledge-base change.
+  as-is.
 - A malformed `manifest.json` surfaces as HTTP 500 with the validation error
   in the body (`internal/server/handlers.go::GetManifest`), which is the
   contract's "reject or fail to serve an invalid manifest" behavior.
@@ -66,7 +66,6 @@ Verified serving behavior:
   `internal/models/manifest.go::Projects` — projects projection.
 - `internal/server/router.go::NewRouter` — route table.
 - `examples/manifest.v1.json` — local example.
-- Commits: `c5da9d6` (schema + validation), `67b873d` (`/projects`).
 - Contract:
   `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md (field: Manifest Shape)`,
   `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md (field: Field Reference)`,
