@@ -207,6 +207,10 @@ services:
       CONFIG_PATH: /app/config/config.yaml
       # tokens.yaml（super-admin 凭据）指向持久卷，避免每次重启重新生成。
       MCA_TOKENS_PATH: /app/data/tokens.yaml
+      # 服务身份（config 1.5.0）：注入 HRPAuth 内置 super client 凭据。
+      # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
+      HRPAUTH_SUPER_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID:?mca-server requires HRPAUTH_SUPER_CLIENT_ID (HRPAuth oauth2.super_client_id)}
+      HRPAUTH_SUPER_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET:?mca-server requires HRPAUTH_SUPER_CLIENT_SECRET (HRPAuth oauth2.super_client_secret)}
     volumes:
       - ./config/mca-server.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - mca-data:/app/data
