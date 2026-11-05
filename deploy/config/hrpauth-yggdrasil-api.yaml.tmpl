@@ -53,7 +53,8 @@ server:
 site:
     implementation: HRPAuth Yggdrasil API Provider
     name: HRPAuth
-    version: 1.0.0
+    # 加引号防坑：不带引号时靠"两个点不是数字"才被 YAML 解析成字符串。
+    version: "1.0.0"
 
 yggdrasil:
     feature_flags:
@@ -81,4 +82,4 @@ yggdrasil:
         signature_public_key_path: "${SIGNATURE_KEY_DIR}/public_key.pem"
         skin_domains: []
         textures_storage: ./storage
-        version: 1.0.0
+        version: "1.0.0"
