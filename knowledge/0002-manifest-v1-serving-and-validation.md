@@ -4,10 +4,6 @@
 
 Accepted (records current state)
 
-## Date
-
-2026-11-04
-
 ## Context
 
 The manifest is the service's reason to exist. Its schema, field semantics,

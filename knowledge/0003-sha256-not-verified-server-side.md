@@ -4,10 +4,6 @@
 
 Accepted (records a known unimplemented item)
 
-## Date
-
-2026-11-04
-
 ## Context
 
 Each manifest artifact carries `sha256` and `size_bytes`. The contract makes

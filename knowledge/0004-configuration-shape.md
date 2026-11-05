@@ -4,10 +4,6 @@
 
 Accepted (records current state)
 
-## Date
-
-2026-11-04
-
 ## Context
 
 The service reads `config.yaml` from the working directory
