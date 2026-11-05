@@ -28,15 +28,12 @@ hrpauth:
     # 本服务走自助注册拿到独立 secret（见 .env.example）。
     client_id: "${WINNERPROXY_CLIENT_ID}"
     client_secret: "${WINNERPROXY_CLIENT_SECRET}"
-    timeout_sec: 10
-    enabled: true
     presence:
         enabled: true
         name: WinnerProxy
         ttl_seconds: 0
     sdk:
         enabled: true
-        url: ""
 
 upstreams:
     official:
