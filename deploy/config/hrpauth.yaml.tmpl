@@ -1,4 +1,4 @@
-version: "13"
+version: "14"
 
 server:
     port: :2778
@@ -87,6 +87,17 @@ oauth2:
         - client_id: "${SDKHANDLER_CLIENT_ID}"
           client_secret: "${SDKHANDLER_CLIENT_SECRET}"
           name: HA-WebUI-SDKHandler
+    # v14 新增（v13->v14 迁移项）：自助客户端注册（POST /oauth/register，
+    # 仅内置 super client 可发起）的 scope 允许列表，键为服务 presence 名。
+    # 键必须与 presence 名逐字一致：WinnerProxy / HASkinProxy 为各自模板
+    # presence.name 默认名；yggdrasil-api 为 YGG 启动时硬编码名。
+    # 实测结论：三个服务所需 scope 均为空（运维级检查只看"是否服务令牌"，
+    # 不查 scope 列表），故全部给空列表。SDKHandler 不在列表内：它不能
+    # 自助注册，仍由上方 service_clients 种子预置。
+    service_scope_allowlist:
+        WinnerProxy: []
+        yggdrasil-api: []
+        HASkinProxy: []
 
 # v8 引入（v7->v8 迁移）：解耦后的 Yggdrasil-API 服务地址。
 # 心跳等主程序 -> Yggdrasil-API 调用使用该地址；compose 网络内直连。
