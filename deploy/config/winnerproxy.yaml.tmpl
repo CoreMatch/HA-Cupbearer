@@ -51,4 +51,5 @@ upstreams:
 
 site:
     name: WinnerProxy
-    version: 0.2.0
+    # 加引号防坑：不带引号时靠"两个点不是数字"才被 YAML 解析成字符串。
+    version: "0.2.0"
