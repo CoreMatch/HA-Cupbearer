@@ -47,9 +47,9 @@ Record what is and is not implemented:
   JSON.
 - **Update detection is entirely a consumer-side duty.** The contract's
   comparison semantics assume some consumer downloads the artifact and
-  verifies sha256. At HEAD, the only known consumer (HA-Services-MaintenanceView)
+  verifies sha256. The only known consumer (HA-Services-MaintenanceView)
   does **not** download or verify artifacts at all (it only renders the
-  download URL), so today **no component in the ecosystem verifies artifact
+  download URL), so **no component in the ecosystem verifies artifact
   content against the manifest**. Recorded honestly as an open gap.
 - Candidate future work (not decided): verify bytes at serve time, or provide
   an ingestion/publish tool that computes digests. *Pending author

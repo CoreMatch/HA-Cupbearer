@@ -10,14 +10,13 @@ Accepted (records current state)
 
 ## Context
 
-HA-Services-Deployer was initialized on 2026-10-17 (commits `1d34788`,
-`6b2df78`) as "the backend service for HA service rollout and artifact
-delivery" (`README.md:L3`). Its external contract is HA-Contract
+HA-Services-Deployer is "the backend service for HA service rollout and
+artifact delivery" (`README.md:L3`). Its external contract is HA-Contract
 `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md`.
 
 ## Decision
 
-Record the actual boundary of the service at HEAD:
+Record the actual boundary of the service:
 
 **It is a read-only delivery service.** The entire HTTP surface is GET-only
 (`internal/server/router.go::NewRouter`):
@@ -63,7 +62,6 @@ middleware verifies identity).
 - `internal/server/handlers.go::GetArtifact` — artifact serving with traversal guard.
 - `internal/server/handlers.go::loadManifest` — manifest loaded from disk per request; missing file → empty manifest.
 - `README.md:L5-L9` — stated current scope.
-- Commits: `6b2df78` (initial codebase, 2026-10-17), `c5da9d6` (manifest v1 schema and validation), `67b873d` (`/projects` endpoint).
 - Contract:
   `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md::Transport`,
   `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md::Purpose`.
