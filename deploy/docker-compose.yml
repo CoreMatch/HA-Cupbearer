@@ -178,8 +178,11 @@ services:
       # 见 WinnerProxy knowledge/0004 第 5 项）。
       HRPAUTH_YGG_URL: http://hrpauth-yggdrasil-api:2770
       WINNERPROXY_PUBLIC_URL: ${WINNERPROXY_PUBLIC_URL}
-      WINNERPROXY_CLIENT_ID: ${WINNERPROXY_CLIENT_ID}
-      WINNERPROXY_CLIENT_SECRET: ${WINNERPROXY_CLIENT_SECRET}
+      # 服务凭据（必填）：WinnerProxy 用它以 client_credentials 向 HRPAuth
+      # /oauth/token 换服务令牌，再领取 X-Internal-Key；缺一即启动失败。
+      # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
+      WINNERPROXY_CLIENT_ID: ${WINNERPROXY_CLIENT_ID:?winnerproxy requires WINNERPROXY_CLIENT_ID (upstreams.hrpauth.client_id)}
+      WINNERPROXY_CLIENT_SECRET: ${WINNERPROXY_CLIENT_SECRET:?winnerproxy requires WINNERPROXY_CLIENT_SECRET (upstreams.hrpauth.client_secret)}
     depends_on:
       hrpauth:
         condition: service_healthy
