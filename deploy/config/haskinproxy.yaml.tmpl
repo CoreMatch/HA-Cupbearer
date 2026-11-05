@@ -5,10 +5,11 @@ server:
 upstream:
     base_url: "${HRPAUTH_URL}"
     timeout: 10
-    # v14 凭据语义（两种用法，详见 .env.example）：当前 compose 默认注入
-    # super 凭据，启动时经 POST /oauth/register 换取本服务低权限客户端
-    # （client_id = presence 名 HASkinProxy）；填低权限配对则幂等校验、不换取。
-    # 容器内配置写回不持久化，每次启动重新换取，secret 稳定。
+    # v14 凭据语义（填什么就按什么，运行时由服务自己判断，详见 .env.example）：
+    # 填 super 凭据 → 启动时经 POST /oauth/register 换取本服务低权限客户端
+    # （client_id = presence 名 HASkinProxy）；填专用低权限对 → 幂等校验、不换取。
+    # 容器内配置写回不持久化，换取路径下每次启动重新换取，secret 稳定。
+    # 若填 super secret，HRPAuth 种子会跳过本服务种子条目并告警。
     client_id: "${HASKINPROXY_CLIENT_ID}"
     client_secret: "${HASKINPROXY_CLIENT_SECRET}"
 

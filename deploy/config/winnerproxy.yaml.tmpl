@@ -16,15 +16,16 @@ cache:
 
 hrpauth:
     url: "${HRPAUTH_URL}"
-    # v14 凭据语义（两种用法，详见 .env.example）：
-    # 1) 填 super 凭据（当前 compose 默认：注入 HRPAUTH_SUPER_CLIENT_ID/SECRET）：
-    #    启动时经 POST /oauth/register 换取本服务低权限客户端
+    # v14 凭据语义（填什么就按什么，运行时由服务自己判断，详见 .env.example）：
+    # 1) 填 super 凭据 → 启动时经 POST /oauth/register 换取本服务低权限客户端
     #    （client_id = presence 名 WinnerProxy），super 凭据只用于换取那一次调用；
-    # 2) 填已预置的低权限配对（如 hrpauth service_clients 种子的 WinnerProxy 行）：
+    # 2) 填本服务专用低权限对（如 hrpauth service_clients 种子的 WinnerProxy 行）→
     #    启动只做幂等校验（client_credentials 令牌请求），不发换取请求。
     # 容器部署注意：本文件是容器启动时由模板渲染的一次性配置，换取成功后的
-    # 写回不会跨重启持久化，每次启动都会重新换取——HRPAuth get-or-create
-    # 保证每次拿到的 secret 稳定，无副作用；勿以为改容器内文件能保留。
+    # 写回不会跨重启持久化，换取路径下每次启动都会重新换取——HRPAuth
+    # get-or-create 保证每次拿到的 secret 稳定，无副作用；勿以为改容器内文件能保留。
+    # 防呆：若把 super secret 填进这里，HRPAuth 种子会跳过本服务种子条目并告警，
+    # 本服务走自助注册拿到独立 secret（见 .env.example）。
     client_id: "${WINNERPROXY_CLIENT_ID}"
     client_secret: "${WINNERPROXY_CLIENT_SECRET}"
     timeout_sec: 10
