@@ -103,16 +103,16 @@ services:
       RENDERED_CONFIG: /app/config.yaml
       HRPAUTH_URL: http://hrpauth:2778
       YGG_PUBLIC_URL: ${YGG_PUBLIC_URL}
-      # 服务凭据（v14 语义，必填）：默认指向 HRPAuth 内置 super client 凭据——
-      # YGG 启动时用它经 POST /oauth/register 换取本服务低权限客户端
-      # （client_id = presence 名 HRPAuth-Yggdrasil-API），super 凭据只用于
-      # 换取那一次调用，随后从内存丢弃；容器内配置写回不持久化，每次启动
-      # 重新换取，secret 稳定。想改用"低权限配对"（启动幂等校验、免换取回合）：
-      # 把下面两行换成 ${YGG_CLIENT_ID} / ${YGG_CLIENT_SECRET}
-      # （hrpauth 的 service_clients 种子已预置该配对）。
+      # 服务凭据（v14 语义，必填）：填什么就按什么，运行时由服务自己判断——
+      # 填 super 凭据 → 启动时经 POST /oauth/register 换取本服务低权限客户端
+      # （client_id = presence 名 HRPAuth-Yggdrasil-API）；填本服务专用低权限对 →
+      # 校验通过后直接使用（幂等路径，不发换取请求）。详见 .env.example。
+      # 防呆：若把 super secret 填进这里，HRPAuth 种子会跳过本服务的种子条目
+      # 并告警（避免 super secret 被复制成普通客户端行），本服务随后走自助
+      # 注册拿到独立 secret。容器内配置写回不持久化，属预期。
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
-      YGG_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID:?hrpauth-yggdrasil-api requires HRPAUTH_SUPER_CLIENT_ID (v14 super creds, exchanged for per-service client at startup)}
-      YGG_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET:?hrpauth-yggdrasil-api requires HRPAUTH_SUPER_CLIENT_SECRET (v14 super creds, exchanged for per-service client at startup)}
+      YGG_CLIENT_ID: ${YGG_CLIENT_ID:?hrpauth-yggdrasil-api requires YGG_CLIENT_ID (fill super creds or the dedicated low-priv pair, see .env.example)}
+      YGG_CLIENT_SECRET: ${YGG_CLIENT_SECRET:?hrpauth-yggdrasil-api requires YGG_CLIENT_SECRET (fill super creds or the dedicated low-priv pair, see .env.example)}
     volumes:
       - ./config/hrpauth-yggdrasil-api.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - ./secrets:/app/secrets:ro
@@ -167,16 +167,16 @@ services:
       RENDERED_CONFIG: /app/config.yaml
       HRPAUTH_URL: http://hrpauth:2778
       HASKINPROXY_PUBLIC_URL: ${HASKINPROXY_PUBLIC_URL}
-      # 服务凭据（v14 语义，必填）：默认指向 HRPAuth 内置 super client 凭据——
-      # HASkinProxy 启动时用它经 POST /oauth/register 换取本服务低权限客户端
-      # （client_id = presence 名 HASkinProxy），super 凭据只用于换取那一次调用，
-      # 随后从内存丢弃；容器内配置写回不持久化，每次启动重新换取，secret 稳定。
-      # 想改用"低权限配对"（启动幂等校验、免换取回合）：把下面两行换成
-      # ${HASKINPROXY_CLIENT_ID} / ${HASKINPROXY_CLIENT_SECRET}
-      # （hrpauth 的 service_clients 种子已预置该配对）。
+      # 服务凭据（v14 语义，必填）：填什么就按什么，运行时由服务自己判断——
+      # 填 super 凭据 → 启动时经 POST /oauth/register 换取本服务低权限客户端
+      # （client_id = presence 名 HASkinProxy）；填本服务专用低权限对 →
+      # 校验通过后直接使用（幂等路径，不发换取请求）。详见 .env.example。
+      # 防呆：若把 super secret 填进这里，HRPAuth 种子会跳过本服务的种子条目
+      # 并告警（避免 super secret 被复制成普通客户端行），本服务随后走自助
+      # 注册拿到独立 secret。容器内配置写回不持久化，属预期。
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
-      HASKINPROXY_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID:?haskinproxy requires HRPAUTH_SUPER_CLIENT_ID (v14 super creds, exchanged for per-service client at startup)}
-      HASKINPROXY_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET:?haskinproxy requires HRPAUTH_SUPER_CLIENT_SECRET (v14 super creds, exchanged for per-service client at startup)}
+      HASKINPROXY_CLIENT_ID: ${HASKINPROXY_CLIENT_ID:?haskinproxy requires HASKINPROXY_CLIENT_ID (fill super creds or the dedicated low-priv pair, see .env.example)}
+      HASKINPROXY_CLIENT_SECRET: ${HASKINPROXY_CLIENT_SECRET:?haskinproxy requires HASKINPROXY_CLIENT_SECRET (fill super creds or the dedicated low-priv pair, see .env.example)}
     depends_on:
       hrpauth:
         condition: service_healthy
@@ -206,16 +206,16 @@ services:
       # 见 WinnerProxy knowledge/0004 第 5 项）。
       HRPAUTH_YGG_URL: http://hrpauth-yggdrasil-api:2770
       WINNERPROXY_PUBLIC_URL: ${WINNERPROXY_PUBLIC_URL}
-      # 服务凭据（v14 语义，必填）：默认指向 HRPAuth 内置 super client 凭据——
-      # WinnerProxy 启动时用它经 POST /oauth/register 换取本服务低权限客户端
-      # （client_id = presence 名 WinnerProxy），super 凭据只用于换取那一次调用，
-      # 随后从内存丢弃；容器内配置写回不持久化，每次启动重新换取，secret 稳定。
-      # 想改用"低权限配对"（启动幂等校验、免换取回合）：把下面两行换成
-      # ${WINNERPROXY_CLIENT_ID} / ${WINNERPROXY_CLIENT_SECRET}
-      # （hrpauth 的 service_clients 种子已预置该配对）。
+      # 服务凭据（v14 语义，必填）：填什么就按什么，运行时由服务自己判断——
+      # 填 super 凭据 → 启动时经 POST /oauth/register 换取本服务低权限客户端
+      # （client_id = presence 名 WinnerProxy）；填本服务专用低权限对 →
+      # 校验通过后直接使用（幂等路径，不发换取请求）。详见 .env.example。
+      # 防呆：若把 super secret 填进这里，HRPAuth 种子会跳过本服务的种子条目
+      # 并告警（避免 super secret 被复制成普通客户端行），本服务随后走自助
+      # 注册拿到独立 secret。容器内配置写回不持久化，属预期。
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
-      WINNERPROXY_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID:?winnerproxy requires HRPAUTH_SUPER_CLIENT_ID (v14 super creds, exchanged for per-service client at startup)}
-      WINNERPROXY_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET:?winnerproxy requires HRPAUTH_SUPER_CLIENT_SECRET (v14 super creds, exchanged for per-service client at startup)}
+      WINNERPROXY_CLIENT_ID: ${WINNERPROXY_CLIENT_ID:?winnerproxy requires WINNERPROXY_CLIENT_ID (fill super creds or the dedicated low-priv pair, see .env.example)}
+      WINNERPROXY_CLIENT_SECRET: ${WINNERPROXY_CLIENT_SECRET:?winnerproxy requires WINNERPROXY_CLIENT_SECRET (fill super creds or the dedicated low-priv pair, see .env.example)}
     depends_on:
       hrpauth:
         condition: service_healthy
