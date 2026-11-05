@@ -141,6 +141,8 @@ services:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yaml
+      # 模板 core_api.base_url 消费（运行时调 HRPAuth /internal/verify-token 等）。
+      HRPAUTH_URL: http://hrpauth:2778
     volumes:
       - ./config/haskinlib.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       # 与 hrpauth-yggdrasil-api 共享同一份纹理存储（见 volumes.haskin-textures 注释）：
@@ -243,6 +245,12 @@ services:
       CONFIG_PATH: /app/config/config.yaml
       # tokens.yaml（super-admin 凭据）指向持久卷，避免每次重启重新生成。
       MCA_TOKENS_PATH: /app/data/tokens.yaml
+      # 模板 auth.hrpauth.* 消费的三个变量（此前悬空：模板引用但 compose
+      # 未注入，渲染会变空串）：base_url 走 compose 网络直连；public_client_id
+      # 与 maintenance_token 取自 .env。
+      HRPAUTH_URL: http://hrpauth:2778
+      HRPAUTH_PUBLIC_CLIENT_ID: ${HRPAUTH_PUBLIC_CLIENT_ID}
+      MCA_MAINTENANCE_TOKEN: ${MCA_MAINTENANCE_TOKEN}
       # 服务身份（config 1.5.0）：注入 HRPAuth 内置 super client 凭据。
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
       HRPAUTH_SUPER_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID:?mca-server requires HRPAUTH_SUPER_CLIENT_ID (HRPAuth oauth2.super_client_id)}
@@ -250,6 +258,10 @@ services:
     volumes:
       - ./config/mca-server.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - mca-data:/app/data
+    depends_on:
+      # 与其它消费 HRPAUTH_URL 的服务一致：等 HRPAuth 健康后再启动。
+      hrpauth:
+        condition: service_healthy
     logging: *common-logging
 
   ha-webui-sdkhandler:

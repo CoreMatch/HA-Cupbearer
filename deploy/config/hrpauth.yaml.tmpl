@@ -43,7 +43,9 @@ smtp:
     from_name: HRPAuth
     host: "${SMTP_HOST}"
     password: "${SMTP_PASSWORD}"
-    port: "${SMTP_PORT}"
+    # 必须是无引号的数字：代码 getInt 只认数字类型，带引号会解析成 0，
+    # 发信拨号变成 "host:0" 直接失败。
+    port: ${SMTP_PORT}
     username: "${SMTP_USERNAME}"
 
 callback:
@@ -116,7 +118,8 @@ yggdrasil_api:
     base_url: "http://hrpauth-yggdrasil-api:2770"
 
 # v9 新增（v8->v9 迁移项）：SDK 源码头包代理存储（供 HA-WebUI-SDKHandler 拉取）。
-# 值取代码默认；目录位于 hrpauth-data 卷内（/app/data）。
+# 三值为迁移期补的默认值（运行期解析本身无默认，缺段即零值）；
+# 目录位于 hrpauth-data 卷内（/app/data）。
 sdk_packages:
     storage_dir: ./data/sdk_packages
     max_package_size: 20971520
@@ -128,5 +131,5 @@ site:
     version: "6"
 
 # 注意：v6 模板中的 storage / keygen / yggdrasil 三个段已在 v7->v8 迁移中
-# 移除，v11 代码不再解析它们（feature_flags、签名密钥路径等已迁出主服务配置），
-# 因此此处不再保留。
+# 移除，当前代码（v14）不再解析它们（feature_flags、签名密钥路径等已迁出
+# 主服务配置），因此此处不再保留。

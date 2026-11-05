@@ -12,6 +12,18 @@ database:
 
 server:
     port: :2701
+    # 代码默认 "*"（缺段时运行期同样兜底 "*"），显式写出。
+    cors: "*"
+
+# v4->v5 迁移新增段：HRPAuth 核心 API 客户端（运行时真实调用
+# /internal/verify-token、/services/users/:uuid 等）。base_url 走 compose
+# 网络直连（代码默认 http://127.0.0.1:2778 在容器内不可达，必须覆盖）。
+# 注意：client_id/client_secret 未配置（代码默认空 = 退化为无鉴权调用），
+# 而上述端点要求运维级鉴权——HASkinLib 目前在 HRPAuth 侧没有登记的
+# OAuth2 客户端（不在 service_clients 种子与 service_scope_allowlist 中），
+# 待作者决策，见 SamuelPortal-docs/PENDING-DECISIONS.md。
+core_api:
+    base_url: "${HRPAUTH_URL}"
 
 textures:
     max_request_bytes: 2359296

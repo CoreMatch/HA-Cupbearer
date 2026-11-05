@@ -21,6 +21,8 @@ build:
   npm_blacklist: []
   ignore_scripts_default: true
   template_poll_interval_seconds: 0
+  # 单次构建整体超时（秒）；代码默认 20 分钟（0 亦回落到该值），显式写出。
+  build_timeout_seconds: 1200
 
 state_dir: ./state
 
