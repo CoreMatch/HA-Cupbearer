@@ -75,11 +75,11 @@ oauth2:
     # secret"永远一致。MCA 不在此列：它继续共用 super client（作者口径：
     # 开发环境共用即可）。
     # 命名约定：种子 client_id（取自 env）与各服务 presence 自报名逐字一致
-    # （WinnerProxy / yggdrasil-api / HASkinProxy；SDKHandler 无 presence、
+    # （WinnerProxy / HRPAuth-Yggdrasil-API / HASkinProxy；SDKHandler 无 presence、
     # 不走自助，名字与 presence 无关）——因此 v14 自助注册 get-or-create
     # 直接命中种子行，不会新建第二行。旧名行（winnerproxy /
-    # hrpauth-yggdrasil-api / haskinproxy）不会自动改名，升级时需人工清掉
-    # 旧行或忽略（不做自动迁移）。
+    # hrpauth-yggdrasil-api / yggdrasil-api / haskinproxy）不会自动改名，
+    # 升级时需人工清掉旧行或忽略（不做自动迁移）。
     service_clients:
         - client_id: "${WINNERPROXY_CLIENT_ID}"
           client_secret: "${WINNERPROXY_CLIENT_SECRET}"
@@ -96,13 +96,14 @@ oauth2:
     # v14 新增（v13->v14 迁移项）：自助客户端注册（POST /oauth/register，
     # 仅内置 super client 可发起）的 scope 允许列表，键为服务 presence 名。
     # 键必须与 presence 名逐字一致：WinnerProxy / HASkinProxy 为各自模板
-    # presence.name 默认名；yggdrasil-api 为 YGG 启动时硬编码名。
+    # presence.name 默认名；HRPAuth-Yggdrasil-API 为 YGG 的 microservice.name
+    # （presence 登记名；yggdrasil-api 只是它申请 scope 时用的名字，不是登记名）。
     # 实测结论：三个服务所需 scope 均为空（运维级检查只看"是否服务令牌"，
     # 不查 scope 列表），故全部给空列表。SDKHandler 不在列表内：它不能
     # 自助注册，仍由上方 service_clients 种子预置。
     service_scope_allowlist:
         WinnerProxy: []
-        yggdrasil-api: []
+        HRPAuth-Yggdrasil-API: []
         HASkinProxy: []
 
 # v8 引入（v7->v8 迁移）：解耦后的 Yggdrasil-API 服务地址。

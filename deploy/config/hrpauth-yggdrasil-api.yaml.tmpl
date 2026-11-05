@@ -8,6 +8,10 @@ callback:
 
 core_api:
     base_url: "${HRPAUTH_URL}"
+    # v14 凭据语义（两种用法，详见 .env.example）：当前 compose 默认注入
+    # super 凭据，启动时经 POST /oauth/register 换取本服务低权限客户端
+    # （client_id = presence 名 HRPAuth-Yggdrasil-API）；填低权限配对则
+    # 幂等校验、不换取。容器内配置写回不持久化，每次启动重新换取，secret 稳定。
     client_id: "${YGG_CLIENT_ID}"
     client_secret: "${YGG_CLIENT_SECRET}"
 
