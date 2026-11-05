@@ -190,11 +190,16 @@ services:
       # 见 WinnerProxy knowledge/0004 第 5 项）。
       HRPAUTH_YGG_URL: http://hrpauth-yggdrasil-api:2770
       WINNERPROXY_PUBLIC_URL: ${WINNERPROXY_PUBLIC_URL}
-      # 服务凭据（必填）：WinnerProxy 用它以 client_credentials 向 HRPAuth
-      # /oauth/token 换服务令牌，再领取 X-Internal-Key；缺一即启动失败。
+      # 服务凭据（v14 语义，必填）：默认指向 HRPAuth 内置 super client 凭据——
+      # WinnerProxy 启动时用它经 POST /oauth/register 换取本服务低权限客户端
+      # （client_id = presence 名 WinnerProxy），super 凭据只用于换取那一次调用，
+      # 随后从内存丢弃；容器内配置写回不持久化，每次启动重新换取，secret 稳定。
+      # 想改用"低权限配对"（启动幂等校验、免换取回合）：把下面两行换成
+      # ${WINNERPROXY_CLIENT_ID} / ${WINNERPROXY_CLIENT_SECRET}
+      # （hrpauth 的 service_clients 种子已预置该配对）。
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
-      WINNERPROXY_CLIENT_ID: ${WINNERPROXY_CLIENT_ID:?winnerproxy requires WINNERPROXY_CLIENT_ID (upstreams.hrpauth.client_id)}
-      WINNERPROXY_CLIENT_SECRET: ${WINNERPROXY_CLIENT_SECRET:?winnerproxy requires WINNERPROXY_CLIENT_SECRET (upstreams.hrpauth.client_secret)}
+      WINNERPROXY_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID:?winnerproxy requires HRPAUTH_SUPER_CLIENT_ID (v14 super creds, exchanged for per-service client at startup)}
+      WINNERPROXY_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET:?winnerproxy requires HRPAUTH_SUPER_CLIENT_SECRET (v14 super creds, exchanged for per-service client at startup)}
     depends_on:
       hrpauth:
         condition: service_healthy
