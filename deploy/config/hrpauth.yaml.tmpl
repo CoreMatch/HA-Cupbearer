@@ -80,6 +80,10 @@ oauth2:
     # 直接命中种子行，不会新建第二行。旧名行（winnerproxy /
     # hrpauth-yggdrasil-api / yggdrasil-api / haskinproxy）不会自动改名，
     # 升级时需人工清掉旧行或忽略（不做自动迁移）。
+    # 一致性防呆：若某条目的 client_secret 填成了 super secret，HRPAuth 会
+    # 跳过该种子条目并告警（避免把 super secret 复制成普通客户端行）；
+    # 对应服务随后走自助注册拿到独立 secret——启动日志里看到"种子里
+    # 没建出这行"即为此。
     service_clients:
         - client_id: "${WINNERPROXY_CLIENT_ID}"
           client_secret: "${WINNERPROXY_CLIENT_SECRET}"
