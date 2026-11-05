@@ -74,6 +74,12 @@ oauth2:
     # （同一个 .env 变量），保证"种子里的 secret"与"服务拿来换令牌的
     # secret"永远一致。MCA 不在此列：它继续共用 super client（作者口径：
     # 开发环境共用即可）。
+    # 命名约定：种子 client_id（取自 env）与各服务 presence 自报名逐字一致
+    # （WinnerProxy / yggdrasil-api / HASkinProxy；SDKHandler 无 presence、
+    # 不走自助，名字与 presence 无关）——因此 v14 自助注册 get-or-create
+    # 直接命中种子行，不会新建第二行。旧名行（winnerproxy /
+    # hrpauth-yggdrasil-api / haskinproxy）不会自动改名，升级时需人工清掉
+    # 旧行或忽略（不做自动迁移）。
     service_clients:
         - client_id: "${WINNERPROXY_CLIENT_ID}"
           client_secret: "${WINNERPROXY_CLIENT_SECRET}"
