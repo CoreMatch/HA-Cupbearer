@@ -4,10 +4,6 @@
 
 Accepted (records current state and boundary)
 
-## Date
-
-2026-11-04
-
 ## Context
 
 Besides the deployer service itself, this repository hosts the Compose

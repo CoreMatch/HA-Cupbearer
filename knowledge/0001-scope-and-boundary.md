@@ -4,10 +4,6 @@
 
 Accepted (records current state)
 
-## Date
-
-2026-11-04
-
 ## Context
 
 HA-Services-Deployer is "the backend service for HA service rollout and
