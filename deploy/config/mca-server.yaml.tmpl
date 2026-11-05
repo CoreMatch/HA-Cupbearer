@@ -1,4 +1,4 @@
-version: "1.4.0"
+version: "1.5.0"
 
 server:
   host: "0.0.0.0"
@@ -21,14 +21,20 @@ redis:
   password: "${REDIS_PASSWORD}"
   db: ${REDIS_DB}
 
-# v1.1.0~v1.4.0 迁移新增的 auth 块（1.2.0 收敛为 base_url 单字段，
-# 1.3.0 增加 public_client_id，1.4.0 增加 maintenance_token）。
+# v1.1.0~v1.5.0 迁移新增的 auth 块（1.2.0 收敛为 base_url 单字段，
+# 1.3.0 增加 public_client_id，1.4.0 增加 maintenance_token，
+# 1.5.0 增加 service_client_id/service_client_secret 服务身份）。
 auth:
   hrpauth:
     # HRPAuth 根地址；compose 网络内直连。
     base_url: "${HRPAUTH_URL}"
     # OAuth2 public client_id（第一方 refresh_token 流程），与 HRPAuth 对齐。
     public_client_id: "${HRPAUTH_PUBLIC_CLIENT_ID}"
+    # 服务身份（config 1.5.0，client_credentials）：取 HRPAuth 内置 super
+    # client 凭据，与 Yggdrasil-API 的 core_api.client_id/secret 同源；
+    # 由 compose 以 ${VAR:?} 注入，缺值时容器直接启动失败。
+    service_client_id: "${HRPAUTH_SUPER_CLIENT_ID}"
+    service_client_secret: "${HRPAUTH_SUPER_CLIENT_SECRET}"
   # 运维超级凭据。代码迁移在缺失时会自动生成随机值，但容器内配置
   # 非持久，重启即变，故显式由 .env 注入（MCA_MAINTENANCE_TOKEN）。
   maintenance_token: "${MCA_MAINTENANCE_TOKEN}"
