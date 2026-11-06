@@ -38,7 +38,8 @@ security:
     rate_limit_window_sec: 600
 
 smtp:
-    encryption: tls
+    # encryption 字段已删：代码解析但从未使用（发信走明文 smtp.SendMail）；
+    # 代码侧字段移除由另一路负责。
     from_email: "${SMTP_FROM_EMAIL}"
     from_name: HRPAuth
     host: "${SMTP_HOST}"
