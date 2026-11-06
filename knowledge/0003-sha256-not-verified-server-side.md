@@ -10,7 +10,7 @@ Each manifest artifact carries `sha256` and `size_bytes`. The contract makes
 sha256 the **authoritative content identity** for update detection: consumers
 compare sha256 to decide whether a binary really changed, even when `version`
 stays the same (HA-Contract
-`/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md (field: Comparison Semantics)`,
+`/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Comparison Semantics)`,
 steps 4–5).
 
 ## Decision
@@ -58,6 +58,6 @@ Record what is and is not implemented:
 - `internal/server/handlers.go::GetArtifact` — artifact serving without hashing.
 - Search verification: no `sha256`/`SHA256` usage under `internal/server/`.
 - Contract:
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md (field: Field Reference)`
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Field Reference)`
   (`sha256`, `size_bytes`) and
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md (field: Comparison Semantics)`.
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Comparison Semantics)`.

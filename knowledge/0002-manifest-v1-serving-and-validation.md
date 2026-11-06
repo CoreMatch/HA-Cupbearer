@@ -25,7 +25,7 @@ Verified serving behavior:
   called in `internal/server/handlers.go::loadManifest`), not an error.
 - `Validate` implements the contract's validation rules 1–8
   (`internal/models/manifest.go::Validate` ↔
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md (field: Validation Rules)`):
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Validation Rules)`):
   schema_version==1, unique service names, non-empty version,
   ≥1 artifact per service, unique artifact ids, role in
   {binary, archive, asset}, non-empty file_name, lowercase 64-hex sha256,
@@ -37,7 +37,7 @@ Verified serving behavior:
   (`internal/models/manifest.go::Projects`,
   `internal/server/handlers.go::GetProjects`). This matches the contract's
   description of `/api/v1/projects`
-  (/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md::Transport).
+  (/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md::Transport).
 
 ## Consequences (including recorded drift)
 
@@ -63,7 +63,7 @@ Verified serving behavior:
 - `internal/server/router.go::NewRouter` — route table.
 - `examples/manifest.v1.json` — local example.
 - Contract:
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md (field: Manifest Shape)`,
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md (field: Field Reference)`,
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md (field: Validation Rules)`,
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md::Transport`.
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Manifest Shape)`,
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Field Reference)`,
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Validation Rules)`,
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md::Transport`.

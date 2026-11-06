@@ -7,7 +7,7 @@ self-hosting and maintenance of this service.
 
 - It does **not** define external behavior. The version-manifest contract is
   owned by [HA-Contract](https://github.com/CoreMatch/HA-Contract) at
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md`.
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md`.
   API shapes, field semantics, and validation rules are normative there, not
   here.
 - When an entry here conflicts with HA-Contract, **fix the entry, not the
@@ -26,3 +26,4 @@ self-hosting and maintenance of this service.
 | [0003](0003-sha256-not-verified-server-side.md) | sha256 is not verified server-side (unimplemented) | Manifest `sha256`/`size_bytes` are format-checked only; the server never hashes served files, so content identity is currently a consumer-side duty. |
 | [0004](0004-configuration-shape.md) | Configuration shape | `config.yaml` is auto-generated on first start from `DefaultConfig` (`:2770`, `./data/artifacts`, `./data/manifest.json`); no sample service config is shipped; compose deployments override the port to `:18080`. |
 | [0005](0005-platform-compose-template-lives-here.md) | Platform compose template lives here | `deploy/` hosts the whole-platform Compose orchestration whose build contexts point at sibling repos; it is deployment tooling, not part of the service's API surface. |
+| [0006](0006-version-manifest.md) | HA Services Deployer version manifest | Migrated back from HA-Contract `docs/dev/HA-Services-Deployer/version-manifest.md` on 2026-11-07 (source: HA-Contract@bab2a05). |
