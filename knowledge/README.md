@@ -7,7 +7,7 @@ self-hosting and maintenance of this service.
 
 - It does **not** define external behavior. The version-manifest contract is
   owned by [HA-Contract](https://github.com/CoreMatch/HA-Contract) at
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md`.
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md`.
   API shapes, field semantics, and validation rules are normative there, not
   here.
 - When an entry here conflicts with HA-Contract, **fix the entry, not the

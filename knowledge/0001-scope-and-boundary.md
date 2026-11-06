@@ -8,7 +8,7 @@ Accepted (records current state)
 
 HA-Services-Deployer is "the backend service for HA service rollout and
 artifact delivery" (`README.md:L3`). Its external contract is HA-Contract
-`/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md`.
+`/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md`.
 
 ## Decision
 
@@ -50,7 +50,7 @@ middleware verifies identity).
 - HA-Services-MaintenanceView is the known consumer of `/api/v1/projects`;
   the contract explicitly notes MaintenanceView is work-in-progress and not
   covered by the manifest contract
-  (/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md::Purpose).
+  (/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md::Purpose).
 
 ## Evidence
 
@@ -59,5 +59,5 @@ middleware verifies identity).
 - `internal/server/handlers.go::loadManifest` — manifest loaded from disk per request; missing file → empty manifest.
 - `README.md:L5-L9` — stated current scope.
 - Contract:
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md::Transport`,
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md::Purpose`.
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md::Transport`,
+  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md::Purpose`.

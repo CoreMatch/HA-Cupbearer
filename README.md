@@ -10,7 +10,7 @@
 
 ## Version Manifest Protocol
 
-- Contract document: `HA-Contract/docs/dev/HA-Services-Deployer/version-manifest.md`
+- Contract document: `knowledge/0006-version-manifest.md`
 - Local example: `examples/manifest.v1.json`
 
 Manifest v1 is organized by service release. It is used for release display,
