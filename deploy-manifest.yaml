@@ -1,0 +1,66 @@
+# HA-Services-Deployer 部署声明（deploy-manifest v1）
+# schema 依据：HA-Services-Deployer internal/manifest/（SchemaVersion=1）
+manifest_version: 1
+kind: service
+project: ha-services-deployer
+display_name: HA-Services-Deployer
+group: ops
+# 未知：仓库无版本 tag，代码与配置均无服务版本字段。
+service_version: "unknown"
+
+facts:
+  ports:
+    # deploy/config/ha-services-deployer.yaml.tmpl: server.listen ":18080"。
+    # compose 宿主侧默认 127.0.0.1 绑定（DEPLOYER_BIND，注释：内部下发服务，
+    # 仅回环；MaintenanceView 经网络访问）。
+    - name: http
+      port: 18080
+      exposure: loopback
+  health:
+    # internal/server/router.go router.GET("/healthz")；compose healthcheck 同路径
+    http:
+      port_name: http
+      path: /healthz
+      expect_status: 200
+      timeout_seconds: 5
+      interval_seconds: 30
+      retries: 3
+  depends_on: []
+  # 纯本地文件服务：无数据库、无 redis、无出站服务依赖
+  # （knowledge 0001：GET-only 下发服务）。
+  migration:
+    # 无数据库。配置版本化（v1→v2 引入 orchestration 段）由启动期配置迁移
+    # 框架处理，无持久层 schema 迁移。
+    mode: none
+  data_dirs:
+    # 模板：storage.artifacts_root ./data/artifacts；manifest.path
+    # ./data/manifest.json；编排状态默认 <data>/deploy（models/config.go
+    # OrchestrationConfig.StateDir 注释）。
+    - ./data
+  config:
+    # main.go config.Load("config.yaml")。
+    # 模板版本 = 模板首行 version: "1"。漂移记录：代码 ConfigVersion 已为 "2"
+    # （internal/config/migrations.go，v1→v2 仅补 orchestration 零值段），
+    # 装载时自动迁移，模板尚未同步。
+    - path: config.yaml
+      template_version: "1"
+  static_assets: ""
+
+baremetal:
+  process:
+    manager: aapanel
+  install:
+    # 计划值（非既成事实）：本服务尚未在生产部署（PROD-UPGRADE-EXECUTED-20261106
+    # §10-3：127.0.0.1:18080 connection refused，"均为升级前既有状态"）。
+    # 按现有命名习惯（ha→hay→sl→hasp→wp→mca→sdkh→hasmv）预定目录与二进制名；
+    # 首次实际部署时以现场为准。
+    root: /www/wwwroot/hasd
+    binary_name: hasd
+  artifact:
+    source: local_path
+    # 未知：仓库 build/ 目录现存的 hasmv 为误置产物（与本仓无关），
+    # 本仓当前无可复现在位产物。
+    local_path: "unknown"
+
+container:
+  enabled: false

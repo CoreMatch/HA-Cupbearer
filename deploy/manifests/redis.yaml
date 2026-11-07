@@ -1,0 +1,23 @@
+# Redis 外部依赖声明（deploy-manifest v1，kind=external）
+# 性质：只检查可达，不由我们管理（宝塔面板安装维护的 redis）。
+manifest_version: 1
+kind: external
+project: redis
+display_name: Redis
+group: infra
+
+facts:
+  ports:
+    # 端口 = 各服务模板 redis.port 消费的 REDIS_PORT 默认值 6379
+    # （deploy/.env.example REDIS_PORT=6379）。
+    - name: redis
+      port: 6379
+      exposure: loopback
+  external:
+    # 与各服务同机（生产实测：redis 为面板软件，
+    # PROD-UPGRADE-EXECUTED-20261106 §7 "面板软件 btpanel/mysqld/redis/...
+    # 均 active"；各服务模板 REDIS_HOST 在生产指向本机）。
+    host: 127.0.0.1
+
+container:
+  enabled: false

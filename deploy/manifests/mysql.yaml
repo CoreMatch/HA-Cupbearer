@@ -1,0 +1,23 @@
+# MySQL 外部依赖声明（deploy-manifest v1，kind=external）
+# 性质：只检查可达，不由我们管理（宝塔面板安装维护的 mysqld）。
+manifest_version: 1
+kind: external
+project: mysql
+display_name: MySQL
+group: infra
+
+facts:
+  ports:
+    # 端口 = 各服务模板 database.port 消费的 DB_PORT 默认值 3306
+    # （deploy/.env.example DB_PORT=3306）。
+    - name: mysql
+      port: 3306
+      exposure: loopback
+  external:
+    # 与各服务同机（生产实测：hasl 生产配置 host 127.0.0.1，
+    # PROD-UPGRADE-EXECUTED-20261106 §1；mysqld 为面板软件，
+    # 同文 §7 "面板软件 btpanel/mysqld/redis/... 均 active"）。
+    host: 127.0.0.1
+
+container:
+  enabled: false
