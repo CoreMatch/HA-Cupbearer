@@ -124,10 +124,38 @@ func Stage(ctx context.Context, m *manifest.Manifest, destDir string, githubToke
 	return expectSHA, nil
 }
 
+// EnsureDiskSpaceFor 是部署前置检查（preflight）复用的磁盘空间预检：
+// 能确定产物大小时校验 destDir 可用空间（含余量），不足返回带差额的错误。
+// 返回值 checked 表示空间是否实际得到校验——产物大小未知（如 ci_release
+// 的 HEAD 读不到 Content-Length）时为 false，调用方应报警告而非阻断
+// （落盘安全性仍由临时文件 + sha256 保证）。
+func EnsureDiskSpaceFor(ctx context.Context, m *manifest.Manifest, destDir string, githubToken string) (checked bool, err error) {
+	size, known, err := artifactSize(ctx, m, githubToken)
+	if err != nil {
+		return false, err
+	}
+	if !known {
+		return false, nil
+	}
+	return true, ensureDiskSpace(destDir, size+spaceMargin)
+}
+
 // ensureDiskSpace 校验 dir 所在文件系统可用空间不低于 required，
-// 不足时返回带差额的明确错误。
+// 不足时返回带差额的明确错误。dir 尚不存在时（preflight 场景）
+// 向上取最近存在的祖先目录做统计。
 func ensureDiskSpace(dir string, required int64) error {
-	avail, err := availableBytes(dir)
+	probe := dir
+	for {
+		if _, err := os.Stat(probe); err == nil {
+			break
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			return fmt.Errorf("check disk space at %s: no existing ancestor found", dir)
+		}
+		probe = parent
+	}
+	avail, err := availableBytes(probe)
 	if err != nil {
 		return fmt.Errorf("check disk space at %s: %w", dir, err)
 	}

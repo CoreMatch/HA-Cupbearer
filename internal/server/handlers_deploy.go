@@ -3,7 +3,9 @@ package server
 import (
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"HA-Services-Deployer/internal/orchestrator"
 
@@ -155,6 +157,51 @@ func (h *Handler) GetDeployRuns(c *gin.Context) {
 	})
 }
 
+// GetDeployPreflight 只读前置检查：把部署前能查的问题一次查全、一次报全，
+// 输出分级为阻断项（拒绝执行）与警告项（可继续但有风险）。
+// 查询参数：projects（逗号分隔）与/或 group 指定范围，空=全部。
+func (h *Handler) GetDeployPreflight(c *gin.Context) {
+	if h.orchestrationDisabled(c) {
+		return
+	}
+	var projects []string
+	for _, p := range strings.Split(c.Query("projects"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			projects = append(projects, p)
+		}
+	}
+
+	report, err := h.orch.Preflight(c.Request.Context(), projects, c.Query("group"), "deploy")
+	if err != nil {
+		var verr *orchestrator.ErrValidation
+		if errors.As(err, &verr) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "manifest validation failed",
+				"data":    gin.H{"errors": verr.Errors},
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	msg := "preflight passed"
+	if report.HasBlockers() {
+		msg = fmt.Sprintf("preflight found %d blocker(s); a run would be refused", len(report.Blockers))
+	} else if len(report.Warnings) > 0 {
+		msg = fmt.Sprintf("preflight passed with %d warning(s)", len(report.Warnings))
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": msg,
+		"data":    report,
+	})
+}
+
 func (h *Handler) GetDeployRun(c *gin.Context) {
 	if h.orchestrationDisabled(c) {
 		return
@@ -197,6 +244,15 @@ func (h *Handler) PostDeployRun(c *gin.Context) {
 				"success": false,
 				"message": "manifest validation failed; run refused",
 				"data":    gin.H{"errors": verr.Errors},
+			})
+			return
+		}
+		var perr *orchestrator.ErrPreflightBlocked
+		if errors.As(err, &perr) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "preflight blocked; run refused",
+				"data":    gin.H{"preflight": perr.Report},
 			})
 			return
 		}
@@ -243,6 +299,15 @@ func (h *Handler) PostDeployRollback(c *gin.Context) {
 				"success": false,
 				"message": "manifest validation failed; rollback refused",
 				"data":    gin.H{"errors": verr.Errors},
+			})
+			return
+		}
+		var perr *orchestrator.ErrPreflightBlocked
+		if errors.As(err, &perr) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "preflight blocked; rollback refused",
+				"data":    gin.H{"preflight": perr.Report},
 			})
 			return
 		}

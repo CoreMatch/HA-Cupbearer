@@ -87,6 +87,9 @@ type Run struct {
 	Options    RunOptions                `json:"options"`
 	Order      []string                  `json:"order"`
 	Results    map[string]*ProjectResult `json:"results"`
+	// Preflight 记录本次运行开局时的前置检查报告。
+	// 阻断项已在入口处拦截（不会进入运行），这里留存的是放行时的报告。
+	Preflight *PreflightReport `json:"preflight,omitempty"`
 	// Notes 记录本次运行需要上报的异常事件（如 state.json 损坏后的恢复动作）。
 	// 失败与降级必须可被看见，不静默。
 	Notes      []string   `json:"notes,omitempty"`
@@ -182,6 +185,14 @@ func (o *Orchestrator) StartRun(opts RunOptions) (*Run, error) {
 		return nil, err
 	}
 
+	// 前置检查门：能查的一次查全，发现阻断项直接拒绝（dry_run 同样拒绝）。
+	ctx, cancel := context.WithTimeout(context.Background(), preflightTimeout)
+	report := o.preflightScope(ctx, ms, order, "deploy")
+	cancel()
+	if report.HasBlockers() {
+		return nil, &ErrPreflightBlocked{Report: report}
+	}
+
 	run := &Run{
 		ID:        time.Now().Format("20060102-150405"),
 		Type:      "deploy",
@@ -189,6 +200,7 @@ func (o *Orchestrator) StartRun(opts RunOptions) (*Run, error) {
 		Options:   opts,
 		Order:     order,
 		Results:   map[string]*ProjectResult{},
+		Preflight: report,
 		StartedAt: time.Now(),
 	}
 
@@ -197,8 +209,10 @@ func (o *Orchestrator) StartRun(opts RunOptions) (*Run, error) {
 	o.mu.Unlock()
 	_ = o.store.SaveRun(run)
 
+	// 快照先于执行协程：之后 run 会被执行侧并发写入。
+	snap := snapshotRun(run)
 	go o.execute(run, ms)
-	return snapshotRun(run), nil
+	return snap, nil
 }
 
 // Rollback 一键回滚：软链切回上一版本（或指定版本）+ 重启 + 健康判定。
@@ -248,6 +262,22 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 		order = append(order, requiredDependents(ms, project)...)
 	}
 
+	// 单飞先行：已有运行就不必再跑前置检查。
+	o.mu.Lock()
+	busy := o.current != nil && o.current.State == "running"
+	o.mu.Unlock()
+	if busy {
+		return nil, ErrRunInProgress
+	}
+
+	// 前置检查门（rollback 模式：不查产物/磁盘，其余相同）。
+	ctx, cancel := context.WithTimeout(context.Background(), preflightTimeout)
+	report := o.preflightScope(ctx, ms, order, "rollback")
+	cancel()
+	if report.HasBlockers() {
+		return nil, &ErrPreflightBlocked{Report: report}
+	}
+
 	run := &Run{
 		ID:        time.Now().Format("20060102-150405") + "-rb",
 		Type:      "rollback",
@@ -255,6 +285,7 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 		Options:   RunOptions{Projects: order},
 		Order:     order,
 		Results:   map[string]*ProjectResult{},
+		Preflight: report,
 		StartedAt: time.Now(),
 	}
 
@@ -267,8 +298,10 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 	o.mu.Unlock()
 	_ = o.store.SaveRun(run)
 
+	// 快照先于执行协程：之后 run 会被执行侧并发写入。
+	snap := snapshotRun(run)
 	go o.executeRollback(run, m, target, cascade)
-	return snapshotRun(run), nil
+	return snap, nil
 }
 
 func (o *Orchestrator) prepare(projects []string, group string) ([]*manifest.Manifest, *manifest.Report, []string, error) {
