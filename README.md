@@ -85,6 +85,22 @@ Key rules:
   `ci_release` 已实现但未启用。将来启用发布时资产按硬约定命名：
   `<项目名>-linux-amd64` + `<项目名>-linux-amd64.sha256`。
 
+## Deployment facts (this service)
+
+Authoritative deployment facts for the Deployer itself live in
+[`deploy-manifest.yaml`](deploy-manifest.yaml) at the repo root
+(`manager: aapanel` = panel-managed, orchestrator read-only):
+
+- Deployment port `:18080`, loopback-only (per
+  `deploy/config/ha-services-deployer.yaml.tmpl`; the bare-local first-run
+  default above is `:2770`); health probe `GET /healthz`.
+- No service dependencies (local-file delivery service); no database, no Redis.
+- Config file `config.yaml` (template version 1; the code auto-migrates the
+  file to v2 on load).
+- Data dir: `./data` (artifacts root, version manifest, orchestration state).
+- External dependency declarations (reachability-only) for MySQL/Redis live in
+  [`deploy/manifests/`](deploy/manifests/).
+
 ## Platform container orchestration
 
 This repository hosts the Compose template for the whole HA platform under
