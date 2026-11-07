@@ -255,6 +255,10 @@ services:
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
       HRPAUTH_SUPER_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID:?mca-server requires HRPAUTH_SUPER_CLIENT_ID (HRPAuth oauth2.super_client_id)}
       HRPAUTH_SUPER_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET:?mca-server requires HRPAUTH_SUPER_CLIENT_SECRET (HRPAuth oauth2.super_client_secret)}
+      # 成局下发的游戏服务器地址（config 1.8.0 matchmaking.join_target）：
+      # 留空 host 表示不启用，成局记录不带地址，客户端回落本地配置。
+      MCA_JOIN_TARGET_HOST: ${MCA_JOIN_TARGET_HOST:-}
+      MCA_JOIN_TARGET_PORT: ${MCA_JOIN_TARGET_PORT:-0}
     volumes:
       - ./config/mca-server.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - mca-data:/app/data
