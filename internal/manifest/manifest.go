@@ -51,8 +51,45 @@ type Facts struct {
 	DataDirs     []string     `yaml:"data_dirs" json:"data_dirs"`
 	Config       []ConfigFile `yaml:"config" json:"config"`
 	StaticAssets string       `yaml:"static_assets" json:"static_assets"`
+	// Smoke 可选：部署后冒烟验证请求列表。健康探测只证明进程活着，
+	// 冒烟用真实请求证明服务"真的在干活"。未声明的项目维持只看健康。
+	Smoke []SmokeCheck `yaml:"smoke,omitempty" json:"smoke,omitempty"`
 	// External 仅 kind=external 清单使用：可达性检查的主机。
 	External *ExternalFacts `yaml:"external" json:"external"`
+}
+
+// SmokeCheck 描述一条部署后冒烟请求。
+// 密钥值绝不写进 Manifest：头/体中只允许 ${secret:<name>} 引用，
+// 由编排器从凭据文件的 smoke_secrets 解析；缺失即失败并报清楚。
+type SmokeCheck struct {
+	// Name 为检查名（报告与步骤记录用）；留空时按序号标记。
+	Name   string `yaml:"name" json:"name"`
+	Method string `yaml:"method" json:"method"` // 默认 GET
+	// PortName 指定请求端口；留空时沿用 health.http.port_name。
+	PortName string `yaml:"port_name" json:"port_name"`
+	Path     string `yaml:"path" json:"path"`
+	// Headers 为固定请求头；值可以是字面量或整值 ${secret:<name>} 引用。
+	Headers map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
+	// Body 为可选请求体，支持内联 ${secret:<name>} 替换。
+	Body string `yaml:"body,omitempty" json:"body,omitempty"`
+	// ContentType 在带 Body 时生效，默认 application/json。
+	ContentType string `yaml:"content_type,omitempty" json:"content_type,omitempty"`
+	// ExpectStatus 为期望状态码，默认 200（允许 404 等确定性负结果）。
+	ExpectStatus int `yaml:"expect_status" json:"expect_status"`
+	// Assert 为可选响应体断言。
+	Assert     SmokeAssert `yaml:"assert,omitempty" json:"assert,omitempty"`
+	TimeoutSeconds int   `yaml:"timeout_seconds,omitempty" json:"timeout_seconds,omitempty"` // 默认 5
+}
+
+// SmokeAssert 是响应体断言（三个开关可组合）。
+type SmokeAssert struct {
+	// Contains 要求响应体包含该子串。
+	Contains string `yaml:"contains,omitempty" json:"contains,omitempty"`
+	// JSONField 要求响应为 JSON 且点路径字段存在（如 data.version）。
+	JSONField string `yaml:"json_field,omitempty" json:"json_field,omitempty"`
+	// JSONNotEmpty 要求点路径字段存在且非空（数组/对象/字符串非空，
+	// 数值/布尔存在即视为非空，null 视为空）。
+	JSONNotEmpty string `yaml:"json_not_empty,omitempty" json:"json_not_empty,omitempty"`
 }
 
 type ExternalFacts struct {

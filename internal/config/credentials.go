@@ -14,6 +14,10 @@ type Credentials struct {
 	TinyvisorAPIKey string `json:"tinyvisor_api_key"`
 	DeployToken     string `json:"deploy_token"`
 	GithubToken     string `json:"github_token"`
+	// SmokeSecrets 存放部署后冒烟验证引用的密钥值：
+	// Manifest 的 facts.smoke 以 ${secret:<name>} 引用这里的键，
+	// 密钥本身只存在于凭据文件，绝不进 Manifest。
+	SmokeSecrets map[string]string `json:"smoke_secrets,omitempty"`
 }
 
 // LoadCredentials 读取凭据文件。文件不存在时返回空凭据（不视为错误），

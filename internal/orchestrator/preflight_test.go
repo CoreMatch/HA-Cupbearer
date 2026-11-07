@@ -5,6 +5,8 @@ package orchestrator
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,17 +72,52 @@ func newTinyvisorStub(t *testing.T, key string) *tinyvisorStub {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
-		name := strings.TrimPrefix(r.URL.Path, "/api/scripts/by-name/")
-		s.mu.Lock()
-		status, ok := s.scripts[name]
-		s.mu.Unlock()
-		if !ok {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		rest := strings.TrimPrefix(r.URL.Path, "/api/scripts/by-name/")
+		// POST /api/scripts/by-name/<name>/restart —— 原子重启桩。
+		if name, ok := strings.CutSuffix(rest, "/restart"); ok {
+			if r.Method != http.MethodPost {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+				return
+			}
+			s.setStatus(name, "running")
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"script": map[string]interface{}{"id": name, "name": name, "status": "running"},
+			})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"script": map[string]interface{}{"id": name, "name": name, "status": status},
-		})
+		name := rest
+		switch r.Method {
+		case http.MethodGet:
+			s.mu.Lock()
+			status, ok := s.scripts[name]
+			s.mu.Unlock()
+			if !ok {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"script": map[string]interface{}{"id": name, "name": name, "status": status},
+			})
+		case http.MethodPut:
+			// 按名幂等登记桩：记录即视为成功。
+			var payload struct {
+				WorkDir string `json:"workDir"`
+				Content string `json:"content"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			s.mu.Lock()
+			_, created := s.scripts[name]
+			if _, ok := s.scripts[name]; !ok {
+				s.scripts[name] = "stopped"
+			}
+			s.mu.Unlock()
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"script":  map[string]interface{}{"id": name, "name": name, "status": "stopped", "workDir": payload.WorkDir, "content": payload.Content},
+				"created": !created,
+			})
+		default:
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		}
 	})
 	s.server = httptest.NewServer(mux)
 	t.Cleanup(s.server.Close)
@@ -149,6 +186,10 @@ func newPreflightEnv(t *testing.T, tweaks ...envTweak) *preflightEnv {
 		svcPort:  freePort(t),
 		depPort:  freePort(t),
 	}
+	// 两个声明端口必须不同（聚合校验会拦跨项目端口冲突）。
+	for env.depPort == env.svcPort {
+		env.depPort = freePort(t)
+	}
 	if err := os.MkdirAll(filepath.Join(base, "install"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +197,13 @@ func newPreflightEnv(t *testing.T, tweaks ...envTweak) *preflightEnv {
 		t.Fatal(err)
 	}
 	artifactPath := filepath.Join(base, "svc-a-linux-amd64")
-	if err := os.WriteFile(artifactPath, []byte("binary-v1"), 0o755); err != nil {
+	artifactContent := []byte("binary-v1")
+	if err := os.WriteFile(artifactPath, artifactContent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// local_path 来源强制 sha256 校验：旁路校验和文件必须同时在。
+	sum := sha256.Sum256(artifactContent)
+	if err := os.WriteFile(artifactPath+".sha256", []byte(hex.EncodeToString(sum[:])+"  svc-a-linux-amd64\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

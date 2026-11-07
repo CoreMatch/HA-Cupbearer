@@ -435,6 +435,10 @@ func (o *Orchestrator) executeProject(ctx context.Context, run *Run, raw *manife
 			StepRecord{Name: "restart", OK: true, Detail: "dry-run: restart via tinyvisor"},
 			StepRecord{Name: "health", OK: true, Detail: "dry-run: probe " + mustProbeURL(o, m)},
 		)
+		if len(m.Facts.Smoke) > 0 {
+			res.Steps = append(res.Steps, StepRecord{Name: "smoke", OK: true,
+				Detail: fmt.Sprintf("dry-run: %d smoke check(s)", len(m.Facts.Smoke))})
+		}
 		return res
 	}
 
@@ -508,6 +512,18 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 		res.Detail = "health check failed after restart"
 		o.autoRollback(ctx, m, eff, res, activeBefore)
 		return
+	}
+
+	// 7. 冒烟验证（仅声明了 facts.smoke 的项目）：健康只证明进程活着，
+	// 冒烟用真实请求证明服务真的在干活；失败同样视为部署失败 → 自动回滚。
+	if len(m.Facts.Smoke) > 0 {
+		err := o.runSmoke(ctx, m, eff.healthPort)
+		if !addStep("smoke", err, fmt.Sprintf("%d smoke check(s)", len(m.Facts.Smoke))) {
+			res.Outcome = OutcomeFailed
+			res.Detail = "smoke verification failed after health"
+			o.autoRollback(ctx, m, eff, res, activeBefore)
+			return
+		}
 	}
 
 	pruneReleases(eff.root, m.ServiceVersion, m.Baremetal.Install.KeepReleases)
@@ -606,6 +622,22 @@ func (o *Orchestrator) executeRollback(run *Run, m *manifest.Manifest, target st
 	}
 	res.Steps = append(res.Steps, StepRecord{Name: "health", OK: true, Detail: "healthy after rollback"})
 
+	// 回滚目标同样要过冒烟（若声明）：回滚不是目的，回到能用的版本才是。
+	// 冒烟失败不再切链（已在回滚目标上），如实报失败。
+	if len(m.Facts.Smoke) > 0 {
+		if err := o.runSmoke(ctx, m, eff.healthPort); err != nil {
+			res.Outcome = OutcomeFailed
+			res.Detail = fmt.Sprintf("rolled back %s -> %s, healthy, but smoke failed: %v", orNone(activeBefore), target, err)
+			res.ActiveVersion = target
+			res.FinishedAt = time.Now()
+			run.Results[m.Project] = res
+			o.finishRollbackRun(run)
+			return
+		}
+		res.Steps = append(res.Steps, StepRecord{Name: "smoke", OK: true,
+			Detail: fmt.Sprintf("%d smoke check(s) passed after rollback", len(m.Facts.Smoke))})
+	}
+
 	res.Outcome = OutcomeRolledBack
 	res.ActiveVersion = target
 	res.Detail = fmt.Sprintf("rolled back %s -> %s, healthy", orNone(activeBefore), target)
@@ -649,6 +681,14 @@ func (o *Orchestrator) restartDependent(ctx context.Context, rawDep *manifest.Ma
 		res.Detail = "cascade health check failed: " + err.Error()
 		res.FinishedAt = time.Now()
 		return res
+	}
+	if len(m.Facts.Smoke) > 0 {
+		if err := o.runSmoke(ctx, m, eff.healthPort); err != nil {
+			res.Outcome = OutcomeFailed
+			res.Detail = "cascade smoke verification failed: " + err.Error()
+			res.FinishedAt = time.Now()
+			return res
+		}
 	}
 	res.Outcome = OutcomeDeployed
 	res.ActiveVersion = readActiveVersion(eff.root)

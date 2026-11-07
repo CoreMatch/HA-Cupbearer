@@ -57,6 +57,110 @@ facts:
   external: { host: 127.0.0.1 }
 `
 
+// smokeManifestYAML 构造带 facts.smoke 段的清单（smokeBlock 为列表项缩进文本）。
+func smokeManifestYAML(smokeBlock string) string {
+	return `
+manifest_version: 1
+project: svc-a
+display_name: Service A
+group: core
+service_version: "1.2.0"
+facts:
+  ports:
+    - { name: http, port: 2778, exposure: public }
+  health:
+    http: { port_name: http, path: /health, expect_status: 200, timeout_seconds: 3, interval_seconds: 1, retries: 5 }
+  smoke:
+` + smokeBlock + `
+baremetal:
+  process: { manager: tinyvisor }
+  install: { root: /opt/svc-a, layout: releases, binary_name: svc-a, keep_releases: 3 }
+  artifact: { source: local_path, local_path: /tmp/svc-a-linux-amd64 }
+`
+}
+
+func validateSingleManifestYAML(t *testing.T, content string) *Report {
+	t.Helper()
+	dir := t.TempDir()
+	writeManifest(t, dir, "svc-a", content)
+	manifests, errs := LoadAggregate([]string{dir}, "")
+	if len(errs) != 0 {
+		t.Fatalf("load errors: %v", errs)
+	}
+	return ValidateAggregate(manifests, errs)
+}
+
+func TestValidateSmoke_Valid(t *testing.T) {
+	rep := validateSingleManifestYAML(t, smokeManifestYAML(`
+    - name: token-issue
+      method: POST
+      path: /oauth/token
+      content_type: application/json
+      body: '{"client_id":"${secret:cid}","client_secret":"${secret:csecret}"}'
+      expect_status: 200
+      assert: { json_field: access_token, json_not_empty: access_token }
+    - name: profile-miss
+      path: /profile/00000000-0000-0000-0000-000000000000
+      expect_status: 404
+      assert: { contains: NotFound }
+      timeout_seconds: 3
+    - name: with-header
+      path: /internal
+      headers: { X-Internal-Key: "${secret:internal-key}" }
+`))
+	if !rep.OK() {
+		t.Fatalf("expected valid smoke section, got: %v", rep.Errors)
+	}
+}
+
+func TestValidateSmoke_Rejections(t *testing.T) {
+	cases := []struct {
+		name  string
+		block string
+		want  string
+	}{
+		{"bad method", `
+    - { name: s, method: PATCH, path: /x }
+`, "method 非法"},
+		{"path without slash", `
+    - { name: s, path: x }
+`, "path 必须以 / 开头"},
+		{"undeclared port_name", `
+    - { name: s, path: /x, port_name: admin }
+`, "port_name"},
+		{"expect_status out of range", `
+    - { name: s, path: /x, expect_status: 999 }
+`, "expect_status 越界"},
+		{"partial secret in header", `
+    - name: s
+      path: /x
+      headers: { X-Key: "prefix-${secret:k}" }
+`, "不是完整的"},
+		{"bad token in body", `
+    - name: s
+      path: /x
+      body: '{"v":"${env:HOME}"}'
+`, "非法占位符"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rep := validateSingleManifestYAML(t, smokeManifestYAML(tc.block))
+			if rep.OK() {
+				t.Fatal("expected validation error")
+			}
+			found := false
+			for _, e := range rep.Errors {
+				if strings.Contains(e, tc.want) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("errors %v must contain %q", rep.Errors, tc.want)
+			}
+		})
+	}
+}
+
 func TestValidateAggregate_Valid(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, "svc-a", validManifest)

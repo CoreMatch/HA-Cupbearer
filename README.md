@@ -78,15 +78,21 @@ Key rules:
 - **进程归 Tinyvisor**：编排器不常驻、不写 systemd、不自己拉进程。
 - **生效 = 软链切换 + 重启 + 健康**；只搬文件不算部署。幂等重跑即续跑。
 - **前置检查门（preflight）**：run/rollback 开局一次查全——目录/软链可写、
-  env 文件、Tinyvisor 可达且密钥有效、端口占用（跳过项目自身进程）、
-  磁盘空间、依赖可达；阻断项直接拒绝（400 附完整分级报告），警告项放行；
-  每条都带具体路径/端口。`dry_run` 同样过门，并把报告与计划步骤一起落记录。
+  env 文件、smoke 密钥可解析、Tinyvisor 可达且密钥有效、端口占用（跳过项目
+  自身进程）、磁盘空间、依赖可达；阻断项直接拒绝（400 附完整分级报告），
+  警告项放行；每条都带具体路径/端口。`dry_run` 同样过门，并把报告与计划
+  步骤一起落记录。
+- **部署后冒烟（facts.smoke，可选）**：健康探测只证明进程活着；声明了
+  `facts.smoke` 的项目在健康判定后还要跑真实请求（方法/路径/期望状态码/
+  响应体断言），冒烟失败 = 部署失败，走同样的自动回滚。密钥值只以
+  `${secret:<name>}` 引用，从凭据文件 `smoke_secrets` 解析，绝不进 Manifest。
 - **`manager: aapanel|manual` 的项目一律 foreign**：只读、绝不触碰。
 - **鉴权 fail-closed**：变更端点必须携带 `X-Deploy-Token`；令牌未配置时
   返回 503，任何情况下不放开为无鉴权。运维面板经服务端转发令牌，
   浏览器端不接触凭据。
-- **凭据边界**：`tinyvisor_api_key` / `deploy_token` / `github_token`
-  只存在于 `credentials_path` 指向的本地文件（0600），不进仓库、不进清单。
+- **凭据边界**：`tinyvisor_api_key` / `deploy_token` / `github_token` /
+  `smoke_secrets`（冒烟请求引用的密钥）只存在于 `credentials_path` 指向的
+  本地文件（0600），不进仓库、不进清单。
 - **产物**：本阶段统一 `artifact.source: local_path`（sha256 强制校验）；
   `ci_release` 已实现但未启用。将来启用发布时资产按硬约定命名：
   `<项目名>-linux-amd64` + `<项目名>-linux-amd64.sha256`。
