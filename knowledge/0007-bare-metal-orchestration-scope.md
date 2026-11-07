@@ -47,8 +47,10 @@ cross-project port conflict, enum checks). Foreign projects
 - `manager: aapanel | manual` projects are **foreign**: status visibility
   (passive probe) only — never restarted, never overwritten.
 - Deployment-context overrides (`orchestration.overrides.<project>`) may
-  adjust manager / install_root / health_port / service_version /
-  artifact_local_path. Production contexts apply no overrides.
+  adjust manager / install_root / health_port / ports (per-name remap used
+  by the preflight port check, for isolated environments where a declared
+  port is already taken) / service_version / artifact_local_path.
+  Production contexts apply no overrides.
 
 **Preflight gate.** Deploy and rollback runs are gated by a one-pass
 preflight (`internal/orchestrator/preflight.go::Preflight`): everything
@@ -102,18 +104,28 @@ endpoints are session-cookie gated, which static smoke cannot hold).
 
 **Game-side inclusion (2026-11-08).** Avalon and Cascade joined the
 aggregate as `manager: tinyvisor` manifests. Avalon is declared in the
-author-approved **no-helper form**: `gameHelperPath` empty — the service
-starts and `/v1/health` (Cascade control plane, `cascadeEnable=true`,
-control port 5125) passes, but starting a game returns
-`game: no simulation backend available` (manifest header states this
-explicitly). Composed ports: Cascade edge 5123 (public) + management 8080
-(loopback); Avalon game 5124 (loopback; code default 5123 is yielded to
-the Cascade edge, per Cascade `config.example.yaml` backend example) +
-control 5125. Cascade smoke is `/readyz` (proves the edge→Avalon backend
-chain, not just the process); Avalon smoke is `/v1/rooms`. Both artifacts
-are not built yet (`build/` pending); preflight reports that honestly at
-deploy time. Install roots are planned values (`/www/wwwroot/avl`,
-`/www/wwwroot/casc`), first deployment decides.
+author-approved **no-helper form**: `gameHelperPath` empty with
+`cascadeEnable: true`. Measured in the isolated environment
+(`knowledge/0010`): the control plane comes up and serves `/v1/rooms`
+(health endpoint of this form), but `/v1/health` is 503 by design — its
+ready criterion is the game listener, which only opens after a successful
+game start, which requires the helper. Starting a game was measured to
+return `game: no simulation backend available`. Avalon smoke therefore
+asserts the boundary itself (`/v1/health` must be 503 BACKEND_NOT_READY)
+plus `/v1/rooms` functionality. Composed ports: Cascade edge 5123
+(public) + management 8080 (loopback); Avalon game 5124 (loopback; code
+default 5123 is yielded to the Cascade edge, per Cascade
+`config.example.yaml` backend example) + control 5125. Cascade smoke is
+`/api/rooms` non-empty (room snapshots flowing from Avalon prove the
+chain; `/readyz` is 503 by design in this form and is documented as the
+boundary, not used as smoke). Isolated-context port remapping uses
+`overrides.ports` (preflight checks the remapped ports). Artifacts are
+not built yet in the repositories (`build/` pending); preflight reports
+that honestly at deploy time. Install roots are planned values
+(`/www/wwwroot/avl`, `/www/wwwroot/casc`), first deployment decides.
+Deployment pitfalls found by actually running the form (config/data tied
+to the executable dir, first-run stdin prompt, Cascade migrations dir,
+Tinyvisor restart-after-crash) are recorded in `knowledge/0010`.
 
 **Auth and credentials.** Mutating endpoints (`POST /deploy/run`,
 `POST /deploy/rollback`) require `X-Deploy-Token`; missing/unconfigured
