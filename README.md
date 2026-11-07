@@ -39,6 +39,52 @@ go run .
 - `GET /api/v1/manifest`
 - `GET /api/v1/artifacts/:service/*filepath`
 
+When orchestration is enabled (see below), the following are added:
+
+- `GET /api/v1/deploy/manifests` — aggregated project manifests
+- `GET /api/v1/deploy/validate` — aggregate validation report
+- `GET /api/v1/deploy/status` — declared vs. live status (read-only)
+- `GET /api/v1/deploy/runs`, `GET /api/v1/deploy/runs/:id` — run records
+- `POST /api/v1/deploy/run` — start a deploy run (**requires `X-Deploy-Token`**)
+- `POST /api/v1/deploy/rollback` — one-click rollback (**requires `X-Deploy-Token`**)
+
+## Bare-metal orchestration (opt-in)
+
+Deployer can act as a bare-metal orchestrator that drives
+[Tinyvisor](https://github.com/SamuelCheston/Tinyvisor) on the target machine:
+artifact staging → version dir + `current` symlink → script registration →
+restart → health probe → rollback. Full boundary and semantics:
+`knowledge/0007-bare-metal-orchestration-scope.md`.
+
+Enable it via config v2:
+
+```yaml
+orchestration:
+  enabled: true
+  scan_roots: ["../"]                    # 扫描 <root>/<repo>/deploy-manifest.yaml
+  external_manifests: ./deploy/manifests # mysql/redis 等外部依赖声明
+  state_dir: ./data/deploy
+  tinyvisor: { url: "http://127.0.0.1:7891" }
+  credentials_path: ./data/deploy/credentials.json
+```
+
+Key rules:
+
+- **Manifest 模型**：每个项目仓库根目录一份 `deploy-manifest.yaml`；
+  `facts`（端口/健康/依赖/分组/数据目录）与运行时无关，容器阶段复用；
+  `baremetal`/`container` 为运行时执行方式，`container` 当前冻结。
+- **进程归 Tinyvisor**：编排器不常驻、不写 systemd、不自己拉进程。
+- **生效 = 软链切换 + 重启 + 健康**；只搬文件不算部署。幂等重跑即续跑。
+- **`manager: aapanel|manual` 的项目一律 foreign**：只读、绝不触碰。
+- **鉴权 fail-closed**：变更端点必须携带 `X-Deploy-Token`；令牌未配置时
+  返回 503，任何情况下不放开为无鉴权。运维面板经服务端转发令牌，
+  浏览器端不接触凭据。
+- **凭据边界**：`tinyvisor_api_key` / `deploy_token` / `github_token`
+  只存在于 `credentials_path` 指向的本地文件（0600），不进仓库、不进清单。
+- **产物**：本阶段统一 `artifact.source: local_path`（sha256 强制校验）；
+  `ci_release` 已实现但未启用。将来启用发布时资产按硬约定命名：
+  `<项目名>-linux-amd64` + `<项目名>-linux-amd64.sha256`。
+
 ## Platform container orchestration
 
 This repository hosts the Compose template for the whole HA platform under

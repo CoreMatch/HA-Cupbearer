@@ -1,0 +1,39 @@
+package config
+
+import (
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
+)
+
+// Credentials 是编排链路的本地凭据（tinyvisor apiKey、部署端点令牌、
+// 可选的 GitHub 下载令牌）。只从编排器配置指定的本地文件读取：
+// 文件不进仓库，权限建议 0600。任何凭据都不得写入 Manifest 或配置文件。
+type Credentials struct {
+	TinyvisorAPIKey string `json:"tinyvisor_api_key"`
+	DeployToken     string `json:"deploy_token"`
+	GithubToken     string `json:"github_token"`
+}
+
+// LoadCredentials 读取凭据文件。文件不存在时返回空凭据（不视为错误），
+// 由调用方按 fail-closed 语义处理（例如部署端点拒绝服务）。
+func LoadCredentials(path string) (*Credentials, error) {
+	creds := &Credentials{}
+	if path == "" {
+		return creds, nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return creds, nil
+		}
+		return nil, err
+	}
+
+	if err := json.Unmarshal(data, creds); err != nil {
+		return nil, err
+	}
+	return creds, nil
+}
