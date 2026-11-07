@@ -362,7 +362,8 @@ func (o *Orchestrator) checkSmokeSecrets(m *manifest.Manifest, report *Preflight
 
 // checkPorts 以绑定测试检查声明端口是否被占用；占用者就是项目自己
 // （Tinyvisor 状态 running）时不算冲突——部署流水线会重启它。
-// 部署上下文覆盖了 health_port 时，检查生效端口（与探测/冒烟一致）：
+// 部署上下文覆盖了端口时检查生效端口（与探测/冒烟一致）：
+// overrides.ports 按名重映射优先，其次 health_port 对健康端口生效，
 // 那才是本上下文里服务真正要绑定的口。
 func (o *Orchestrator) checkPorts(ctx context.Context, m *manifest.Manifest, eff effective, report *PreflightReport) {
 	selfRunning := false
@@ -373,9 +374,12 @@ func (o *Orchestrator) checkPorts(ctx context.Context, m *manifest.Manifest, eff
 	if m.Facts.Health.HTTP != nil {
 		healthPortName = m.Facts.Health.HTTP.PortName
 	}
+	ovPorts := o.cfg.Orchestration.Overrides[m.Project].Ports
 	for _, p := range m.Facts.Ports {
 		port := p.Port
-		if eff.healthPort > 0 && p.Name == healthPortName {
+		if ovPort, ok := ovPorts[p.Name]; ok && ovPort > 0 {
+			port = ovPort
+		} else if eff.healthPort > 0 && p.Name == healthPortName {
 			port = eff.healthPort
 		}
 		addr := net.JoinHostPort("0.0.0.0", strconv.Itoa(port))

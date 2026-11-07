@@ -363,6 +363,45 @@ func TestPreflightPortHeldBySelfIsSkipped(t *testing.T) {
 	}
 }
 
+func TestPreflightPortRemapByOverride(t *testing.T) {
+	remap := freePort(t)
+	env := newPreflightEnv(t, func(cfg *models.Config, creds *config.Credentials, stub *tinyvisorStub) {
+		cfg.Orchestration.Overrides = map[string]models.ProjectOverride{
+			"svc-a": {Ports: map[string]int{"http": remap}},
+		}
+	})
+	// 声明端口被占：隔离环境里重映射后的端口才是检查对象。
+	occ, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(env.svcPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occ.Close()
+
+	report := runPreflight(t, env, "deploy")
+	ports := findResults(report, "port")
+	if len(ports) != 1 || !ports[0].OK {
+		t.Fatalf("remapped free port must pass, got %+v (blockers=%+v)", ports, report.Blockers)
+	}
+	if !strings.Contains(ports[0].Detail, strconv.Itoa(remap)) {
+		t.Errorf("detail must carry the remapped port: %s", ports[0].Detail)
+	}
+
+	// 重映射目标被占 → 阻断，且报的是重映射后的端口。
+	occ2, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(remap))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occ2.Close()
+	report = runPreflight(t, env, "deploy")
+	ports = findResults(report, "port")
+	if len(ports) != 1 || ports[0].OK || ports[0].Level != LevelBlocker {
+		t.Fatalf("occupied remapped port must block, got %+v", ports)
+	}
+	if !strings.Contains(ports[0].Detail, strconv.Itoa(remap)) {
+		t.Errorf("blocker must name the remapped port: %s", ports[0].Detail)
+	}
+}
+
 func TestPreflightEnvFileMissingIsWarning(t *testing.T) {
 	env := newPreflightEnv(t)
 	os.Remove(env.envFile)

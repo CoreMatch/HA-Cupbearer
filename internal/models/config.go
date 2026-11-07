@@ -52,6 +52,10 @@ type ProjectOverride struct {
 	// HealthPort 覆盖健康探测端口（本地验证用独立端口，不改生产 Manifest）。
 	// 0 表示不覆盖，沿用 facts.ports 声明。
 	HealthPort int `yaml:"health_port,omitempty" json:"health_port,omitempty"`
+	// Ports 按端口名重映射声明端口（隔离环境绕开本机已被占用的端口）。
+	// 作用于 preflight 的端口占用检查；健康探测/冒烟的目标端口仍由
+	// HealthPort 控制。未列出的端口名沿用 facts.ports 声明。
+	Ports map[string]int `yaml:"ports,omitempty" json:"ports,omitempty"`
 	// ServiceVersion 覆盖目标版本（部署上下文相关：仓库 Manifest 记录现状，
 	// 本地验证上下文在此声明要部署的版本）。空表示沿用 Manifest。
 	ServiceVersion string `yaml:"service_version,omitempty" json:"service_version,omitempty"`
