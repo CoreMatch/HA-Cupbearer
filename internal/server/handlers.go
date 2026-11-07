@@ -13,14 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type Handler struct {
-	cfg *models.Config
-}
-
-func NewHandler(cfg *models.Config) *Handler {
-	return &Handler{cfg: cfg}
-}
-
 func (h *Handler) Healthz(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

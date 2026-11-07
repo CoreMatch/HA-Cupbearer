@@ -32,6 +32,12 @@ func Load(path string) (*models.Config, error) {
 		return nil, err
 	}
 
+	// 迁移会原地修改 map，先记下迁移前版本用于备份命名。
+	oldVersion, _ := raw["version"].(string)
+	if oldVersion == "" {
+		oldVersion = "unknown"
+	}
+
 	// Migrate config
 	migrated, changed, err := MigrateConfig(raw, GenerateToken)
 	if err != nil {
@@ -39,10 +45,6 @@ func Load(path string) (*models.Config, error) {
 	}
 
 	if changed {
-		oldVersion, _ := raw["version"].(string)
-		if oldVersion == "" {
-			oldVersion = "unknown"
-		}
 		if err := BackupConfigFile(path, oldVersion); err != nil {
 			log.Printf("Warning: failed to backup config: %v", err)
 		}

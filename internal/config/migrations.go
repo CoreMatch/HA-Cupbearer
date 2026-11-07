@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const ConfigVersion = "1"
+const ConfigVersion = "2"
 
 // ConfigMigration describes one version step: it transforms a config map from
 // FromVersion into ToVersion. Migrations run strictly in the order they are
@@ -22,7 +22,17 @@ type ConfigMigration struct {
 // configMigrations holds the version chain, ordered from oldest to newest.
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
-		// Add future migrations here
+		// v1 -> v2：引入 orchestration 段（裸金属编排能力）。
+		// 结构上无需改写旧字段：orchestration 缺失时取零值（enabled=false），
+		// 编排能力整体关闭，服务行为与 v1 完全一致（零回归）。
+		{
+			FromVersion: "1",
+			ToVersion:   "2",
+			Migrate: func(cfg map[string]interface{}, tokenGen func() string) error {
+				cfg["version"] = "2"
+				return nil
+			},
+		},
 	}
 }
 
