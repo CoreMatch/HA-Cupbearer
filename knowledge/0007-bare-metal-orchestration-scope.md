@@ -73,12 +73,32 @@ on the run record (`Run.Preflight`). Read-only surface:
 `GET /api/v1/deploy/preflight` (query `projects`/`group`), not subject to
 single-flight. Refused runs leave no run record.
 
+**Post-deploy smoke verification.** Health probes only prove the process is
+alive and routes are mounted — not that the service can issue tokens, read
+config, or reach its database. Manifests may declare `facts.smoke`
+(`internal/manifest/manifest.go::SmokeCheck`): a list of real requests
+(method, path, expected status, optional body assertions
+`contains` / `json_field` / `json_not_empty`, optional fixed headers and
+request body). Managed projects with `facts.smoke` run it right after the
+health probe (`internal/orchestrator/smoke.go::runSmoke`); a failed smoke
+is a failed deploy and takes the same auto-rollback path. Rollback and
+cascade restarts re-verify smoke too. Projects without `facts.smoke` keep
+health-only verification (not enforced). Secrets never live in manifests:
+headers/body reference them as `${secret:<name>}`, resolved from the
+credentials file's `smoke_secrets` map; missing secrets fail the smoke
+with the name stated, and the preflight reports them as blockers
+(`smoke-secrets` check). First-batch smoke declarations (2026-11-08):
+hrpauth `POST /oauth/token` (client_credentials, asserts `access_token`),
+yggdrasil profile query miss (deterministic 404 `ProfileNotFoundException`),
+mca `/api/status` (asserts `data.version` non-empty), deployer
+`/api/v1/projects` (asserts `data.projects` non-empty).
+
 **Auth and credentials.** Mutating endpoints (`POST /deploy/run`,
 `POST /deploy/rollback`) require `X-Deploy-Token`; missing/unconfigured
 token ⇒ 503 (fail-closed), wrong token ⇒ 401. Read-only deploy endpoints
 follow the existing unauthenticated read surface (loopback-bound by
-default). All secrets (`tinyvisor_api_key`, `deploy_token`, `github_token`)
-live only in the local credentials file referenced by
+default). All secrets (`tinyvisor_api_key`, `deploy_token`, `github_token`,
+`smoke_secrets`) live only in the local credentials file referenced by
 `orchestration.credentials_path` — never in manifests, config, or the repo.
 The ops panel (HA-Services-MaintenanceView) acts as the operation surface:
 it holds the deploy token server-side and forwards it; the browser never
@@ -112,6 +132,7 @@ assets must follow the hard naming convention
 - `internal/manifest/validate.go::ValidateAggregate` — aggregate validation.
 - `internal/orchestrator/orchestrator.go::StartRun` — run/rollback/status semantics.
 - `internal/orchestrator/preflight.go::Preflight` — one-pass graded preflight gate.
+- `internal/orchestrator/smoke.go::runSmoke` — post-deploy smoke verification.
 - `internal/orchestrator/pipeline.go::switchSymlink` — symlink/script/probe mechanics.
 - `internal/server/handlers_deploy.go::deployAuth` — fail-closed token auth.
 - E2E record 2026-11-08 (local, unprivileged, isolated ports): deploy v1 →

@@ -9,7 +9,8 @@ package orchestrator
 // 每条结果必须带具体路径/端口/地址，不允许只说"检查失败"。
 //
 // 检查面（deploy 模式）：安装根目录/版本目录可写性、current 软链形态、
-// workdir、env 文件存在可读、目标端口占用（跳过"就是它自己"）、磁盘空间、
+// workdir、env 文件存在可读、smoke 引用的密钥可在凭据文件解析、
+// 目标端口占用（跳过"就是它自己"）、磁盘空间、
 // Manifest 声明的依赖可达性、Tinyvisor 可达与 apiKey 有效。
 // rollback 模式不查产物与磁盘（不拉新产物），其余相同。
 
@@ -20,6 +21,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"syscall"
 	"time"
@@ -158,7 +160,8 @@ func (o *Orchestrator) preflightScope(ctx context.Context, ms []*manifest.Manife
 		}
 		o.checkInstallPaths(m, eff, mode, report)
 		o.checkEnvFile(m, report)
-		o.checkPorts(ctx, m, report)
+		o.checkSmokeSecrets(m, report)
+		o.checkPorts(ctx, m, eff, report)
 		if mode == "deploy" {
 			o.checkDiskSpace(ctx, m, eff, report)
 		}
@@ -319,29 +322,77 @@ func (o *Orchestrator) checkEnvFile(m *manifest.Manifest, report *PreflightRepor
 	report.add(CheckResult{Project: m.Project, Name: "env-file", OK: true, Detail: envFile + " exists and is readable"})
 }
 
+// checkSmokeSecrets 校验 smoke 引用的 ${secret:<name>} 都能在凭据文件解析。
+// 缺失则运行时必失败，报阻断项并点名（部署与回滚都会跑冒烟，两种模式都查）。
+func (o *Orchestrator) checkSmokeSecrets(m *manifest.Manifest, report *PreflightReport) {
+	if len(m.Facts.Smoke) == 0 {
+		return
+	}
+	missingSet := map[string]bool{}
+	collect := func(text string) {
+		for _, name := range smokeSecretNames(text) {
+			if o.creds == nil || o.creds.SmokeSecrets == nil {
+				missingSet[name] = true
+				continue
+			}
+			if v, ok := o.creds.SmokeSecrets[name]; !ok || v == "" {
+				missingSet[name] = true
+			}
+		}
+	}
+	for _, chk := range m.Facts.Smoke {
+		for _, v := range chk.Headers {
+			collect(v)
+		}
+		collect(chk.Body)
+	}
+	if len(missingSet) > 0 {
+		names := make([]string, 0, len(missingSet))
+		for n := range missingSet {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		report.add(CheckResult{Project: m.Project, Name: "smoke-secrets", Level: LevelBlocker,
+			Detail: fmt.Sprintf("smoke secret(s) %v referenced by facts.smoke not configured in credentials file (smoke_secrets)", names)})
+		return
+	}
+	report.add(CheckResult{Project: m.Project, Name: "smoke-secrets", OK: true,
+		Detail: fmt.Sprintf("all smoke secrets for %d check(s) resolve from credentials file", len(m.Facts.Smoke))})
+}
+
 // checkPorts 以绑定测试检查声明端口是否被占用；占用者就是项目自己
 // （Tinyvisor 状态 running）时不算冲突——部署流水线会重启它。
-func (o *Orchestrator) checkPorts(ctx context.Context, m *manifest.Manifest, report *PreflightReport) {
+// 部署上下文覆盖了 health_port 时，检查生效端口（与探测/冒烟一致）：
+// 那才是本上下文里服务真正要绑定的口。
+func (o *Orchestrator) checkPorts(ctx context.Context, m *manifest.Manifest, eff effective, report *PreflightReport) {
 	selfRunning := false
 	if s, err := o.tv.GetByName(ctx, m.Project); err == nil && s.Status == "running" {
 		selfRunning = true
 	}
+	healthPortName := ""
+	if m.Facts.Health.HTTP != nil {
+		healthPortName = m.Facts.Health.HTTP.PortName
+	}
 	for _, p := range m.Facts.Ports {
-		addr := net.JoinHostPort("0.0.0.0", strconv.Itoa(p.Port))
+		port := p.Port
+		if eff.healthPort > 0 && p.Name == healthPortName {
+			port = eff.healthPort
+		}
+		addr := net.JoinHostPort("0.0.0.0", strconv.Itoa(port))
 		ln, err := net.Listen("tcp", addr)
 		if err == nil {
 			ln.Close()
 			report.add(CheckResult{Project: m.Project, Name: "port", OK: true,
-				Detail: fmt.Sprintf("port %d (%s) is free", p.Port, p.Name)})
+				Detail: fmt.Sprintf("port %d (%s) is free", port, p.Name)})
 			continue
 		}
 		if selfRunning {
 			report.add(CheckResult{Project: m.Project, Name: "port", OK: true,
-				Detail: fmt.Sprintf("port %d (%s) held by %s itself (tinyvisor: running; will be restarted)", p.Port, p.Name, m.Project)})
+				Detail: fmt.Sprintf("port %d (%s) held by %s itself (tinyvisor: running; will be restarted)", port, p.Name, m.Project)})
 			continue
 		}
 		report.add(CheckResult{Project: m.Project, Name: "port", Level: LevelBlocker,
-			Detail: fmt.Sprintf("port %d (%s) already in use by another process (bind %s: %v)", p.Port, p.Name, addr, err)})
+			Detail: fmt.Sprintf("port %d (%s) already in use by another process (bind %s: %v)", port, p.Name, addr, err)})
 	}
 }
 

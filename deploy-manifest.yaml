@@ -25,6 +25,19 @@ facts:
       timeout_seconds: 5
       interval_seconds: 30
       retries: 3
+  smoke:
+    # 部署后冒烟：下发面真的能装载并投影清单、列出项目
+    # （internal/server/handlers.go GetProjects；/api/v1/projects 为
+    # MaintenanceView 消费的二进制投影）。空清单 = 服务没有在干活，
+    # 冒烟如实报失败。
+    - name: manifest-lists-projects
+      method: GET
+      path: /api/v1/projects
+      expect_status: 200
+      timeout_seconds: 10
+      assert:
+        json_field: data.projects
+        json_not_empty: data.projects
   depends_on: []
   # 纯本地文件服务：无数据库、无 redis、无出站服务依赖
   # （knowledge 0001：GET-only 下发服务）。

@@ -15,6 +15,12 @@ var (
 	projectNameRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	binaryNameRe   = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 	versionTokenRe = regexp.MustCompile(`\{service_version\}`)
+	// smokeSecretRefRe 匹配 ${secret:<name>} 引用；冒烟请求中凡出现 ${...}
+	// 必须是该形态，密钥值本身绝不进 Manifest。
+	smokeSecretRefRe  = regexp.MustCompile(`^\$\{secret:[A-Za-z0-9_-]+\}$`)
+	smokeSecretAnyRe  = regexp.MustCompile(`\$\{secret:[A-Za-z0-9_-]+\}`)
+	smokeBraceTokenRe = regexp.MustCompile(`\$\{[^}]*\}`)
+	validSmokeMethods = map[string]bool{"GET": true, "POST": true, "PUT": true, "DELETE": true}
 )
 
 // Report 是一次聚合校验的结果。Errors 为空即全部通过。
@@ -164,6 +170,54 @@ func validateFacts(rep *Report, m *Manifest) {
 	case "", "auto_on_startup", "manual", "none":
 	default:
 		rep.addf("%s: facts.migration.mode 非法（%q）", ctx, m.Facts.Migration.Mode)
+	}
+
+	validateSmoke(rep, m, portNames)
+}
+
+// validateSmoke 校验 facts.smoke 段：请求要素合法、密钥只以
+// ${secret:<name>} 形态出现（值从凭据文件解析，绝不写进 Manifest）。
+func validateSmoke(rep *Report, m *Manifest, portNames map[string]bool) {
+	for i, s := range m.Facts.Smoke {
+		ctx := fmt.Sprintf("%s: facts.smoke[%d]", m.Project, i)
+		if s.Name != "" && strings.TrimSpace(s.Name) == "" {
+			rep.addf("%s: name 不能为空白", ctx)
+		}
+		method := strings.ToUpper(s.Method)
+		if method == "" {
+			method = "GET"
+		}
+		if !validSmokeMethods[method] {
+			rep.addf("%s: method 非法（%q），支持 GET|POST|PUT|DELETE", ctx, s.Method)
+		}
+		if !strings.HasPrefix(s.Path, "/") {
+			rep.addf("%s: path 必须以 / 开头", ctx)
+		}
+		if s.PortName != "" && !portNames[s.PortName] {
+			rep.addf("%s: port_name %q 未在 facts.ports 中声明", ctx, s.PortName)
+		}
+		if s.ExpectStatus == 0 {
+			s.ExpectStatus = 200
+		}
+		if s.ExpectStatus < 100 || s.ExpectStatus > 599 {
+			rep.addf("%s: expect_status 越界（%d）", ctx, s.ExpectStatus)
+		}
+		if s.TimeoutSeconds < 0 {
+			rep.addf("%s: timeout_seconds 不能为负", ctx)
+		}
+		for k, v := range s.Headers {
+			// 头值：要么纯字面量，要么整值密钥引用（不允许半截嵌入，
+			// 避免误把密钥片段当普通值提交进仓库）。
+			if strings.Contains(v, "${") && !smokeSecretRefRe.MatchString(v) {
+				rep.addf("%s: headers[%s] 含 ${...} 但不是完整的 ${secret:<name>} 引用", ctx, k)
+			}
+		}
+		// 请求体：任何 ${...} 都必须是合法密钥引用。
+		for _, tok := range smokeBraceTokenRe.FindAllString(s.Body, -1) {
+			if !smokeSecretAnyRe.MatchString(tok) {
+				rep.addf("%s: body 含非法占位符 %q（只允许 ${secret:<name>}）", ctx, tok)
+			}
+		}
 	}
 }
 
