@@ -145,6 +145,58 @@ func TestEnsureDiskSpace(t *testing.T) {
 	}
 }
 
+func TestEnsureDiskSpaceFor_InsufficientReportsShortfall(t *testing.T) {
+	content := []byte("binary-v1")
+	m, _ := localPathManifest(t, content)
+
+	orig := availableBytes
+	availableBytes = func(path string) (int64, error) { return 5, nil }
+	defer func() { availableBytes = orig }()
+
+	checked, err := EnsureDiskSpaceFor(context.Background(), m, t.TempDir(), "")
+	if !checked || err == nil {
+		t.Fatal("expected checked=true with insufficient-space error")
+	}
+	if !strings.Contains(err.Error(), "short by") {
+		t.Errorf("error should include the shortfall: %v", err)
+	}
+}
+
+func TestEnsureDiskSpaceFor_NonexistentDestUsesExistingAncestor(t *testing.T) {
+	content := []byte("binary-v1")
+	m, _ := localPathManifest(t, content)
+	destDir := filepath.Join(t.TempDir(), "releases", "1.0.0") // 尚不存在（preflight 场景）
+
+	var probed string
+	orig := availableBytes
+	availableBytes = func(path string) (int64, error) { probed = path; return 1 << 30, nil }
+	defer func() { availableBytes = orig }()
+
+	checked, err := EnsureDiskSpaceFor(context.Background(), m, destDir, "")
+	if err != nil || !checked {
+		t.Fatalf("expected pass, got checked=%v err=%v", checked, err)
+	}
+	if probed == "" || probed == destDir {
+		t.Errorf("must stat an existing ancestor, probed=%q", probed)
+	}
+}
+
+func TestEnsureDiskSpaceFor_UnknownSizeNotChecked(t *testing.T) {
+	// ci_release 且 HEAD 不可达 → 大小未知 → 不阻断，返回 checked=false。
+	m := ciReleaseManifest()
+	origBase := releaseBaseURL
+	releaseBaseURL = "http://127.0.0.1:1" // 立即拒绝
+	defer func() { releaseBaseURL = origBase }()
+
+	checked, err := EnsureDiskSpaceFor(context.Background(), m, t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("unknown size must not error: %v", err)
+	}
+	if checked {
+		t.Error("unknown artifact size must not be reported as checked")
+	}
+}
+
 func TestStage_CleansOrphanTempFiles(t *testing.T) {
 	content := []byte("binary-v1")
 	m, _ := localPathManifest(t, content)

@@ -44,6 +44,7 @@ func NewRouter(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken 
 			deploy.GET("/manifests", handler.GetDeployManifests)
 			deploy.GET("/validate", handler.GetDeployValidate)
 			deploy.GET("/status", handler.GetDeployStatus)
+			deploy.GET("/preflight", handler.GetDeployPreflight)
 			deploy.GET("/runs", handler.GetDeployRuns)
 			deploy.GET("/runs/:id", handler.GetDeployRun)
 			deploy.POST("/run", handler.deployAuth, handler.PostDeployRun)

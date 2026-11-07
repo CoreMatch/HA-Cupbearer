@@ -44,6 +44,8 @@ When orchestration is enabled (see below), the following are added:
 - `GET /api/v1/deploy/manifests` — aggregated project manifests
 - `GET /api/v1/deploy/validate` — aggregate validation report
 - `GET /api/v1/deploy/status` — declared vs. live status (read-only)
+- `GET /api/v1/deploy/preflight` — one-pass preflight report, graded
+  blocker/warning (read-only; query `projects`/`group` to scope)
 - `GET /api/v1/deploy/runs`, `GET /api/v1/deploy/runs/:id` — run records
 - `POST /api/v1/deploy/run` — start a deploy run (**requires `X-Deploy-Token`**)
 - `POST /api/v1/deploy/rollback` — one-click rollback (**requires `X-Deploy-Token`**)
@@ -75,6 +77,10 @@ Key rules:
   `baremetal`/`container` 为运行时执行方式，`container` 当前冻结。
 - **进程归 Tinyvisor**：编排器不常驻、不写 systemd、不自己拉进程。
 - **生效 = 软链切换 + 重启 + 健康**；只搬文件不算部署。幂等重跑即续跑。
+- **前置检查门（preflight）**：run/rollback 开局一次查全——目录/软链可写、
+  env 文件、Tinyvisor 可达且密钥有效、端口占用（跳过项目自身进程）、
+  磁盘空间、依赖可达；阻断项直接拒绝（400 附完整分级报告），警告项放行；
+  每条都带具体路径/端口。`dry_run` 同样过门，并把报告与计划步骤一起落记录。
 - **`manager: aapanel|manual` 的项目一律 foreign**：只读、绝不触碰。
 - **鉴权 fail-closed**：变更端点必须携带 `X-Deploy-Token`；令牌未配置时
   返回 503，任何情况下不放开为无鉴权。运维面板经服务端转发令牌，

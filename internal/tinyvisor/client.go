@@ -18,6 +18,10 @@ import (
 // ErrNotFound 表示按名查询无对应脚本。
 var ErrNotFound = errors.New("tinyvisor: script not found")
 
+// ErrUnauthorized 表示 apiKey 无效或缺失（Tinyvisor 返回 401）。
+// 前置检查据此把"密钥无效"报为阻断项，而不是混在一般错误里。
+var ErrUnauthorized = errors.New("tinyvisor: unauthorized (invalid or missing apiKey)")
+
 // Script 是 Tinyvisor 脚本记录的视图（字段与其 API 对齐）。
 type Script struct {
 	ID            string `json:"id"`
@@ -85,6 +89,9 @@ func (c *Client) do(ctx context.Context, method, path string, body interface{}, 
 
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrNotFound
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return ErrUnauthorized
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("tinyvisor: %s %s -> %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(data)))
