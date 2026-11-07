@@ -1,4 +1,4 @@
-version: "1.5.0"
+version: "1.9.0"
 
 server:
   host: "0.0.0.0"
@@ -38,3 +38,35 @@ auth:
   # 运维超级凭据。代码迁移在缺失时会自动生成随机值，但容器内配置
   # 非持久，重启即变，故显式由 .env 注入（MCA_MAINTENANCE_TOKEN）。
   maintenance_token: "${MCA_MAINTENANCE_TOKEN}"
+
+# 匹配系统（config 1.6.0+）：后台引擎周期性扫描队列、按分差窗口贪心成局。
+# 参数与 MatchCoreArena-Server config.example.yaml 的默认值一致。
+matchmaking:
+  enabled: true
+  # 引擎扫描周期（秒）
+  tick_seconds: 1
+  # 排队超时（秒）：超时未成局自动移出队列
+  queue_timeout_seconds: 300
+  # 基础分差窗口
+  base_rating_window: 200
+  # 窗口随等待时长的放宽速率（每分钟）
+  rating_window_growth_per_minute: 100
+  # 分差窗口上限
+  max_rating_window: 1000
+  # 可排队模式：match_type 与对应各队人数
+  modes:
+    - match_type: "1v1"
+      team_sizes: [1, 1]
+    - match_type: "2v2"
+      team_sizes: [2, 2]
+  # 成局后下发给客户端的游戏服务器地址（交接链路用）。host 留空
+  # （默认）视为未配置：成局响应不携带该字段，客户端回落本地配置。
+  # 由 .env 的 MCA_JOIN_TARGET_HOST / MCA_JOIN_TARGET_PORT 注入。
+  join_target:
+    host: "${MCA_JOIN_TARGET_HOST}"
+    port: ${MCA_JOIN_TARGET_PORT}
+
+# 排行榜展示配置（config 1.9.0+，纯展示：不参与结算、不引入赛季）。
+# tiers 留空时前端不显示段位进度条；需要时按 config.example.yaml 填写。
+ranking:
+  tiers: []
