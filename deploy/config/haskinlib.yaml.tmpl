@@ -18,12 +18,15 @@ server:
 # v4->v5 迁移新增段：HRPAuth 核心 API 客户端（运行时真实调用
 # /internal/verify-token、/services/users/:uuid 等）。base_url 走 compose
 # 网络直连（代码默认 http://127.0.0.1:2778 在容器内不可达，必须覆盖）。
-# 注意：client_id/client_secret 未配置（代码默认空 = 退化为无鉴权调用），
-# 而上述端点要求运维级鉴权——HASkinLib 目前在 HRPAuth 侧没有登记的
-# OAuth2 客户端（不在 service_clients 种子与 service_scope_allowlist 中），
-# 待作者决策，见 SamuelPortal-docs/PENDING-DECISIONS.md。
+# client_id/client_secret 对应 HRPAuth 启动时幂等种入的专用服务客户端
+# （client_id 固定 haskinlib，见 HRPAuth controllers/startup_controller.go
+# 默认配置生成器第 5 条种子）；.env 的 HASKINLIB_CLIENT_SECRET 必须与
+# HRPAuth 渲染配置中该种子行的 secret 同值。HASkinLib 无 presence 登记、
+# 不走 v14 自助换取，凭据单一来源直接注入（同 SDKHandler 模式）。
 core_api:
     base_url: "${HRPAUTH_URL}"
+    client_id: "${HASKINLIB_CLIENT_ID}"
+    client_secret: "${HASKINLIB_CLIENT_SECRET}"
 
 textures:
     max_request_bytes: 2359296
