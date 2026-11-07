@@ -1,4 +1,4 @@
-version: "14"
+version: "15"
 
 server:
     port: :2778
@@ -38,8 +38,8 @@ security:
     rate_limit_window_sec: 600
 
 smtp:
-    # encryption 字段已删：代码解析但从未使用（发信走明文 smtp.SendMail）；
-    # 代码侧字段移除由另一路负责。
+    # encryption 字段已删：代码已不再解析该字段（发信走明文 smtp.SendMail），
+    # 解析与模板行于 2026-11-06 545a436 一并移除。
     from_email: "${SMTP_FROM_EMAIL}"
     from_name: HRPAuth
     host: "${SMTP_HOST}"
@@ -100,6 +100,12 @@ oauth2:
         - client_id: "${SDKHANDLER_CLIENT_ID}"
           client_secret: "${SDKHANDLER_CLIENT_SECRET}"
           name: HA-WebUI-SDKHandler
+        # HASkinLib 无 presence、不走自助换取：凭据单一来源直接注入它自己的
+        # core_api 段（haskinlib.yaml.tmpl），与此种子行同源同一 .env 变量，
+        # 天然满足"种子 secret 与服务凭据同值"。
+        - client_id: "${HASKINLIB_CLIENT_ID}"
+          client_secret: "${HASKINLIB_CLIENT_SECRET}"
+          name: HASkinLib
     # v14 新增（v13->v14 迁移项）：自助客户端注册（POST /oauth/register，
     # 仅内置 super client 可发起）的 scope 允许列表，键为服务 presence 名。
     # 键必须与 presence 名逐字一致：WinnerProxy / HASkinProxy 为各自模板
@@ -119,7 +125,8 @@ yggdrasil_api:
     base_url: "http://hrpauth-yggdrasil-api:2770"
 
 # v9 新增（v8->v9 迁移项）：SDK 源码头包代理存储（供 HA-WebUI-SDKHandler 拉取）。
-# 三值为迁移期补的默认值（运行期解析本身无默认，缺段即零值）；
+# 三值为迁移期补的默认值（解析层无默认，但消费层有兜底：storage_dir→
+# ./data/sdk_packages、max_packages→128、max_package_size→20MiB）；
 # 目录位于 hrpauth-data 卷内（/app/data）。
 sdk_packages:
     storage_dir: ./data/sdk_packages
@@ -132,5 +139,5 @@ site:
     version: "6"
 
 # 注意：v6 模板中的 storage / keygen / yggdrasil 三个段已在 v7->v8 迁移中
-# 移除，当前代码（v14）不再解析它们（feature_flags、签名密钥路径等已迁出
+# 移除，当前代码（v15）不再解析它们（feature_flags、签名密钥路径等已迁出
 # 主服务配置），因此此处不再保留。

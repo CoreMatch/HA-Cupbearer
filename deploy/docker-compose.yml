@@ -55,7 +55,7 @@ services:
       HRPAUTH_PUBLIC_CLIENT_ID: ${HRPAUTH_PUBLIC_CLIENT_ID}
       HRPAUTH_SUPER_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID}
       HRPAUTH_SUPER_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET}
-      # v13 oauth2.service_clients 种子：四个卫星服务的专用客户端凭据。
+      # v13 oauth2.service_clients 种子：四个卫星服务 + HASkinLib 的专用客户端凭据。
       # 每对变量与对应服务自己配置中的凭据同源（同一个 .env 变量），
       # 保证"种子里的 secret"与"服务换令牌用的 secret"永远一致。
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
@@ -67,6 +67,9 @@ services:
       HASKINPROXY_CLIENT_SECRET: ${HASKINPROXY_CLIENT_SECRET:?hrpauth requires HASKINPROXY_CLIENT_SECRET (oauth2.service_clients seed)}
       SDKHANDLER_CLIENT_ID: ${SDKHANDLER_CLIENT_ID:?hrpauth requires SDKHANDLER_CLIENT_ID (oauth2.service_clients seed)}
       SDKHANDLER_CLIENT_SECRET: ${SDKHANDLER_CLIENT_SECRET:?hrpauth requires SDKHANDLER_CLIENT_SECRET (oauth2.service_clients seed)}
+      # HASkinLib 种子行：与 haskinlib 服务自身 core_api 凭据同源同一 .env 变量。
+      HASKINLIB_CLIENT_ID: ${HASKINLIB_CLIENT_ID:?hrpauth requires HASKINLIB_CLIENT_ID (oauth2.service_clients seed)}
+      HASKINLIB_CLIENT_SECRET: ${HASKINLIB_CLIENT_SECRET:?hrpauth requires HASKINLIB_CLIENT_SECRET (oauth2.service_clients seed)}
       MANAGE_TOKEN: ${MANAGE_TOKEN}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-25}
@@ -185,6 +188,10 @@ services:
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
       HASKINPROXY_CLIENT_ID: ${HASKINPROXY_CLIENT_ID:?haskinproxy requires HASKINPROXY_CLIENT_ID (fill super creds or the dedicated low-priv pair, see .env.example)}
       HASKINPROXY_CLIENT_SECRET: ${HASKINPROXY_CLIENT_SECRET:?haskinproxy requires HASKINPROXY_CLIENT_SECRET (fill super creds or the dedicated low-priv pair, see .env.example)}
+    volumes:
+      # 缺失该挂载时 entrypoint 的 [ -f ] 守卫会静默跳过渲染，服务退化为
+      # 代码默认配置（upstream 不可达、凭据为空）且 /health 仍 200 掩盖坏状态。
+      - ./config/haskinproxy.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
     depends_on:
       hrpauth:
         condition: service_healthy
@@ -224,6 +231,11 @@ services:
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
       WINNERPROXY_CLIENT_ID: ${WINNERPROXY_CLIENT_ID:?winnerproxy requires WINNERPROXY_CLIENT_ID (fill super creds or the dedicated low-priv pair, see .env.example)}
       WINNERPROXY_CLIENT_SECRET: ${WINNERPROXY_CLIENT_SECRET:?winnerproxy requires WINNERPROXY_CLIENT_SECRET (fill super creds or the dedicated low-priv pair, see .env.example)}
+    volumes:
+      # 缺失该挂载时 entrypoint 的 [ -f ] 守卫会静默跳过渲染，服务以代码默认
+      # 配置启动：upstreams.hrpauth 默认 enabled 且凭据为空 → 启动即 fatal
+      # 崩溃循环（main.go 凭据校验），属响故障但仍属编排缺漏。
+      - ./config/winnerproxy.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
     depends_on:
       hrpauth:
         condition: service_healthy

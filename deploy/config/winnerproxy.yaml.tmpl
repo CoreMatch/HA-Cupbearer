@@ -42,8 +42,9 @@ upstreams:
         enabled: true
     hrpauth:
         url: "${HRPAUTH_YGG_URL}"
-        # 与上方 hrpauth 段同一对变量：compose 默认注入 super 凭据，
-        # 启动时换取低权限客户端（两种用法与容器写回说明见上方注释）。
+        # 与上方 hrpauth 段同一对变量（compose 以 :? 必填注入）：v14 语义
+        # "填什么就按什么"——填 super 凭据走启动换取，填专用低权限对走
+        # 幂等校验（两种用法与容器写回说明见上方注释）。
         client_id: "${WINNERPROXY_CLIENT_ID}"
         client_secret: "${WINNERPROXY_CLIENT_SECRET}"
         timeout_sec: 10
