@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"sort"
 	"sync"
@@ -86,8 +87,11 @@ type Run struct {
 	Options    RunOptions                `json:"options"`
 	Order      []string                  `json:"order"`
 	Results    map[string]*ProjectResult `json:"results"`
-	StartedAt  time.Time                 `json:"started_at"`
-	FinishedAt *time.Time                `json:"finished_at,omitempty"`
+	// Notes 记录本次运行需要上报的异常事件（如 state.json 损坏后的恢复动作）。
+	// 失败与降级必须可被看见，不静默。
+	Notes      []string   `json:"notes,omitempty"`
+	StartedAt  time.Time  `json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
 }
 
 type Orchestrator struct {
@@ -125,6 +129,49 @@ func indexByProject(ms []*manifest.Manifest) map[string]*manifest.Manifest {
 		out[m.Project] = m
 	}
 	return out
+}
+
+// loadStateRecovered 加载 GlobalState，并在 state.json 损坏时恢复。
+// 返回可用状态与恢复说明（正常时为空）。恢复策略：隔离损坏文件 → 从 runs
+// 记录重建；重建无结果则显式降级为"全部重跑"。全过程记录并上报，不静默。
+func (o *Orchestrator) loadStateRecovered() (*GlobalState, []string) {
+	empty := func() *GlobalState { return &GlobalState{Projects: map[string]*ProjectState{}} }
+
+	state, err := o.store.LoadState()
+	if err == nil {
+		return state, nil
+	}
+
+	var notes []string
+	note := func(f string, a ...interface{}) {
+		msg := fmt.Sprintf(f, a...)
+		notes = append(notes, msg)
+		log.Printf("orchestrator: state recovery: %s", msg)
+	}
+
+	if !errors.Is(err, ErrStateCorrupt) {
+		note("state.json unreadable (%v); degraded to full re-run", err)
+		return empty(), notes
+	}
+
+	note("state.json is corrupt (%v)", err)
+	if qpath, qerr := o.store.quarantineState(); qerr != nil {
+		note("failed to quarantine corrupt state.json: %v", qerr)
+	} else {
+		note("corrupt state.json quarantined to %s", qpath)
+	}
+
+	rebuilt, rerr := o.store.RebuildStateFromRuns()
+	if rerr != nil {
+		note("rebuild from runs failed (%v); degraded to full re-run", rerr)
+		return empty(), notes
+	}
+	if len(rebuilt.Projects) == 0 {
+		note("no run records available to rebuild state; degraded to full re-run (all projects will be re-checked)")
+		return empty(), notes
+	}
+	note("state rebuilt from run records (%d project(s))", len(rebuilt.Projects))
+	return rebuilt, notes
 }
 
 // StartRun 启动一次异步编排运行（单飞）。返回运行快照，进度经
@@ -247,9 +294,10 @@ func (o *Orchestrator) prepare(projects []string, group string) ([]*manifest.Man
 func (o *Orchestrator) execute(run *Run, ms []*manifest.Manifest) {
 	ctx := context.Background()
 	byProject := indexByProject(ms)
-	state, _ := o.store.LoadState()
-	if state == nil {
-		state = &GlobalState{Projects: map[string]*ProjectState{}}
+	state, notes := o.loadStateRecovered()
+	if len(notes) > 0 {
+		run.Notes = append(run.Notes, notes...)
+		_ = o.store.SaveRun(run)
 	}
 
 	for _, name := range run.Order {
@@ -587,20 +635,22 @@ func (o *Orchestrator) finishRollbackRun(run *Run) {
 		}
 	}
 	_ = o.store.SaveRun(run)
-	state, err := o.store.LoadState()
-	if err == nil && state != nil {
-		for name, r := range run.Results {
-			if r.Outcome == OutcomeRolledBack || r.Outcome == OutcomeDeployed {
-				state.Projects[name] = &ProjectState{
-					Outcome:       string(r.Outcome),
-					ActiveVersion: r.ActiveVersion,
-					Detail:        r.Detail,
-					UpdatedAt:     time.Now(),
-				}
+	state, notes := o.loadStateRecovered()
+	if len(notes) > 0 {
+		run.Notes = append(run.Notes, notes...)
+		_ = o.store.SaveRun(run)
+	}
+	for name, r := range run.Results {
+		if r.Outcome == OutcomeRolledBack || r.Outcome == OutcomeDeployed {
+			state.Projects[name] = &ProjectState{
+				Outcome:       string(r.Outcome),
+				ActiveVersion: r.ActiveVersion,
+				Detail:        r.Detail,
+				UpdatedAt:     time.Now(),
 			}
 		}
-		_ = o.store.SaveState(state)
 	}
+	_ = o.store.SaveState(state)
 	o.mu.Lock()
 	if o.current == run {
 		o.current = run
