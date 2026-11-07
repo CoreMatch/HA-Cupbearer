@@ -2,11 +2,17 @@ package orchestrator
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
 )
+
+// ErrStateCorrupt 表示 state.json 存在但无法解析（截断/写坏）。
+// 调用方据此走恢复流程，而不是让后续操作全部失败。
+var ErrStateCorrupt = errors.New("state file corrupt")
 
 // Store 持久化运行状态（续跑依据）与运行记录。
 // 布局：<dir>/state.json 与 <dir>/runs/<run-id>.json。
@@ -33,6 +39,10 @@ type ProjectState struct {
 
 func (s *Store) statePath() string { return filepath.Join(s.dir, "state.json") }
 
+// LoadState 读取 state.json。
+//   - 文件不存在：返回空状态，无错误（首次运行）；
+//   - 解析失败：返回 ErrStateCorrupt 包装的错误（调用方走恢复流程）；
+//   - 其它读取错误（如权限）：原样返回。
 func (s *Store) LoadState() (*GlobalState, error) {
 	state := &GlobalState{Projects: map[string]*ProjectState{}}
 	data, err := os.ReadFile(s.statePath())
@@ -43,12 +53,66 @@ func (s *Store) LoadState() (*GlobalState, error) {
 		return nil, err
 	}
 	if err := json.Unmarshal(data, state); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrStateCorrupt, err)
 	}
 	if state.Projects == nil {
 		state.Projects = map[string]*ProjectState{}
 	}
 	return state, nil
+}
+
+// RebuildStateFromRuns 从 runs/*.json 重建 GlobalState：按时间正序遍历运行
+// 记录，每个项目取最近一次结果。用于 state.json 损坏后的恢复。
+// 无运行记录时返回空状态（等价于"全部重跑"）。
+func (s *Store) RebuildStateFromRuns() (*GlobalState, error) {
+	state := &GlobalState{Projects: map[string]*ProjectState{}}
+	entries, err := os.ReadDir(filepath.Join(s.dir, "runs"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return state, nil
+		}
+		return nil, err
+	}
+
+	var runs []*Run
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		run, err := s.LoadRun(e.Name()[:len(e.Name())-len(".json")])
+		if err != nil {
+			continue
+		}
+		runs = append(runs, run)
+	}
+	sort.Slice(runs, func(i, j int) bool { return runs[i].StartedAt.Before(runs[j].StartedAt) })
+
+	for _, run := range runs {
+		ts := run.StartedAt
+		if run.FinishedAt != nil {
+			ts = *run.FinishedAt
+		}
+		for name, res := range run.Results {
+			state.Projects[name] = &ProjectState{
+				Outcome:       string(res.Outcome),
+				ActiveVersion: res.ActiveVersion,
+				Detail:        res.Detail,
+				UpdatedAt:     ts,
+			}
+		}
+	}
+	state.UpdatedAt = time.Now()
+	return state, nil
+}
+
+// quarantineState 把损坏的 state.json 改名保留为证据，返回新路径。
+func (s *Store) quarantineState() (string, error) {
+	src := s.statePath()
+	dst := fmt.Sprintf("%s.corrupt-%d", src, time.Now().UnixNano())
+	if err := os.Rename(src, dst); err != nil {
+		return "", err
+	}
+	return dst, nil
 }
 
 func (s *Store) SaveState(state *GlobalState) error {
