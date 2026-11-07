@@ -143,6 +143,12 @@ services:
       RENDERED_CONFIG: /app/config.yaml
       # 模板 core_api.base_url 消费（运行时调 HRPAuth /internal/verify-token 等）。
       HRPAUTH_URL: http://hrpauth:2778
+      # 专用服务客户端凭据（HRPAuth 种子 client_id=haskinlib）：HASkinLib 无
+      # presence、不走自助换取，直接注入（同 SDKHandler 模式）。secret 必须与
+      # HRPAuth 渲染配置中种子行同值；:? 保证缺值时 compose 直接报错，而不是
+      # 带空凭据启动后退化为无鉴权调用（运行时 401）。
+      HASKINLIB_CLIENT_ID: ${HASKINLIB_CLIENT_ID:?haskinlib requires HASKINLIB_CLIENT_ID (dedicated seed pair, see .env.example)}
+      HASKINLIB_CLIENT_SECRET: ${HASKINLIB_CLIENT_SECRET:?haskinlib requires HASKINLIB_CLIENT_SECRET (must equal the haskinlib seed secret in HRPAuth rendered config)}
     volumes:
       - ./config/haskinlib.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       # 与 hrpauth-yggdrasil-api 共享同一份纹理存储（见 volumes.haskin-textures 注释）：
