@@ -1,0 +1,32 @@
+# Anchor drift check for this repository's knowledge/ entries.
+#
+# The checker script is fetched from HA-Contract main on every run:
+# the anchor convention and the checker evolve in one canonical place
+# (HA-Contract scripts/check-knowledge-anchors.sh), so no repository
+# keeps a local copy — a stale pinned copy would silently stop
+# enforcing newer rules (e.g. content fingerprints).
+#
+# ANCHOR_ALLOW_MISSING_ABS_PATHS=1 skips absolute-path anchors that
+# point at sibling repositories absent from a single-repo CI checkout;
+# in a full workspace checkout the checker runs without that variable
+# and verifies those anchors too.
+name: knowledge-anchors
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  knowledge-anchors:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Fetch anchor checker from HA-Contract
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/CoreMatch/HA-Contract/main/scripts/check-knowledge-anchors.sh \
+            -o "$RUNNER_TEMP/check-knowledge-anchors.sh"
+
+      - name: Check knowledge anchors
+        run: ANCHOR_ALLOW_MISSING_ABS_PATHS=1 bash "$RUNNER_TEMP/check-knowledge-anchors.sh"
