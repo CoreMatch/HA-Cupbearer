@@ -87,11 +87,33 @@ health-only verification (not enforced). Secrets never live in manifests:
 headers/body reference them as `${secret:<name>}`, resolved from the
 credentials file's `smoke_secrets` map; missing secrets fail the smoke
 with the name stated, and the preflight reports them as blockers
-(`smoke-secrets` check). First-batch smoke declarations (2026-11-08):
-hrpauth `POST /oauth/token` (client_credentials, asserts `access_token`),
-yggdrasil profile query miss (deterministic 404 `ProfileNotFoundException`),
-mca `/api/status` (asserts `data.version` non-empty), deployer
-`/api/v1/projects` (asserts `data.projects` non-empty).
+(`smoke-secrets` check). Smoke declarations (all endpoint facts verified
+against code): batch 1 (2026-11-08) — hrpauth `POST /oauth/token`
+(client_credentials, asserts `access_token`), yggdrasil profile query miss
+(deterministic 404 `ProfileNotFoundException`), mca `/api/status` (asserts
+`data.version` non-empty), deployer `/api/v1/projects` (asserts
+`data.projects` non-empty); batch 2 (2026-11-08) — haskinlib
+`GET /texture/listpreview` (asserts `items` field), haskinproxy CSL
+`GET /:username` miss (404 + `user not found`), winnerproxy `hasJoined`
+probe (deterministic 204), sdkhandler `GET /api/build/status` (asserts
+`state`; `X-Internal-Key` via `${secret:sdkhandler_internal_key}`),
+maintenance-view `GET /api/session` (asserts `data.auth_required`; deeper
+endpoints are session-cookie gated, which static smoke cannot hold).
+
+**Game-side inclusion (2026-11-08).** Avalon and Cascade joined the
+aggregate as `manager: tinyvisor` manifests. Avalon is declared in the
+author-approved **no-helper form**: `gameHelperPath` empty — the service
+starts and `/v1/health` (Cascade control plane, `cascadeEnable=true`,
+control port 5125) passes, but starting a game returns
+`game: no simulation backend available` (manifest header states this
+explicitly). Composed ports: Cascade edge 5123 (public) + management 8080
+(loopback); Avalon game 5124 (loopback; code default 5123 is yielded to
+the Cascade edge, per Cascade `config.example.yaml` backend example) +
+control 5125. Cascade smoke is `/readyz` (proves the edge→Avalon backend
+chain, not just the process); Avalon smoke is `/v1/rooms`. Both artifacts
+are not built yet (`build/` pending); preflight reports that honestly at
+deploy time. Install roots are planned values (`/www/wwwroot/avl`,
+`/www/wwwroot/casc`), first deployment decides.
 
 **Auth and credentials.** Mutating endpoints (`POST /deploy/run`,
 `POST /deploy/rollback`) require `X-Deploy-Token`; missing/unconfigured
