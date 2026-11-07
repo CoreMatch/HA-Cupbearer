@@ -63,33 +63,32 @@ every template comment was checked against current code facts.
    v14→v15 reference; haskinlib core_api provenance repointed to the
    rendered seed.
 
-### Left open deliberately (report-only)
+### Follow-ups settled by the author (2026-11-08, second pass)
 
-- **`public_redirect_uris` uses `${HRPAUTH_PUBLIC_URL}/oauth/callback`** while
-  the code convention derives redirect URIs from `frontend.url`
-  (config.go migrateV3ToV4 + generator). Correct value depends on where the
-  WebUI actually serves the callback — needs author confirmation; if the
-  WebUI lives on the frontend domain, switch the template line to
-  `${HRPAUTH_FRONTEND_URL}/oauth/callback`.
-- **Unguarded compose variables** (no `:?`, no default): `MCA_MAINTENANCE_TOKEN`
-  (empty silently disables ops-token auth), `HRPAUTH_SUPER_CLIENT_SECRET`
-  (empty secret validates against empty secret — a security gap if .env
-  omits it), `HRPAUTH_PUBLIC_CLIENT_ID`, `WINNERPROXY_PUBLIC_URL`,
-  `HASKINPROXY_PUBLIC_URL`, `MAINTENANCEVIEW_PUBLIC_URL`, `DB_*`. Adding `:?`
-  changes start-failure behavior of existing deployments; proposed as
-  hardening, not applied.
-- **Code-side dead fields** (not template errors): MCA
+- **`public_redirect_uris`** — fixed to `${HRPAUTH_FRONTEND_URL}/oauth/callback`:
+  the author confirmed the WebUI callback lives on the frontend domain and
+  that the template must follow the code convention (redirect URIs derived
+  from `frontend.url`).
+- **Fail-fast guards added** (author decision: "宁可让 compose 起不来也不能静默
+  放过"; container deployments only, bare-metal production unaffected):
+  `:?` with actionable messages on `DB_HOST/DB_USER/DB_PASSWORD` (common-env),
+  `HRPAUTH_PUBLIC_CLIENT_ID`, `HRPAUTH_SUPER_CLIENT_ID/SECRET` (empty super
+  secret authenticates empty-secret clients — security gap),
+  `HASKINPROXY_PUBLIC_URL`, `WINNERPROXY_PUBLIC_URL` (empty silently skips
+  relay registration), `MCA_MAINTENANCE_TOKEN` (empty silently disables OPS
+  auth), `MAINTENANCEVIEW_PUBLIC_URL`.
+- **Live `deploy/.env` aligned** (backup outside the repo at
+  `/home/lnb/Desktop/HA/.env-backups/deployer-20261108.env`; `deploy/.env` is
+  gitignored): satellite client ids corrected to presence names
+  (WinnerProxy / HRPAuth-Yggdrasil-API / HASkinProxy) with fresh secrets
+  (old winnerproxy secret equalled the super secret, tripping the seed-skip
+  guard); `HASKINLIB_CLIENT_ID/SECRET` and `MCA_MAINTENANCE_TOKEN` added.
+  All 20 `:?`-guarded variables verified present and non-empty afterwards.
+- **Code-side dead fields stay** (author decision): MCA
   `server.read_timeout_seconds/write_timeout_seconds`; WinnerProxy
   `log.*`, `site.*`, `server.read/write_timeout_sec`,
   `upstreams.hrpauth.timeout_sec`; SDKHandler `current_link` degenerate use;
-  MV `public_base_url` reserved. Templates keep them (harmless, documented);
-  removal is a code-side decision.
-- **Actual `deploy/.env` drift** (deployment input, not repo content):
-  missing `MCA_MAINTENANCE_TOKEN`; `WINNERPROXY_CLIENT_ID=winnerproxy`
-  lowercase legacy name with secret equal to the super secret (the
-  seed-skip guard then never creates the row; startup can fatal). Align the
-  live `.env` with `.env.example` at the next maintenance window. Same for
-  lowercase legacy `YGG_CLIENT_ID` / `HASKINPROXY_CLIENT_ID`.
+  MV `public_base_url` reserved. Templates keep them (harmless, documented).
 
 ## Consequences
 - Every template field now maps to a code read site or is documented as
