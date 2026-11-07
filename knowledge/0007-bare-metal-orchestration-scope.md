@@ -50,6 +50,29 @@ cross-project port conflict, enum checks). Foreign projects
   adjust manager / install_root / health_port / service_version /
   artifact_local_path. Production contexts apply no overrides.
 
+**Preflight gate.** Deploy and rollback runs are gated by a one-pass
+preflight (`internal/orchestrator/preflight.go::Preflight`): everything
+checkable up front is checked in a single pass and reported graded —
+**blockers** refuse the run (HTTP 400 carries the full report),
+**warnings** pass with risk. Every finding carries the concrete
+path/port/address. Checks (deploy mode): install-root / version-dir
+writability (missing paths probe the nearest existing ancestor),
+`current` must be a symlink, workdir, env-file existence/readability
+(missing = warning — the startup script tolerates it; unreadable =
+blocker — `set -e` would fail), Tinyvisor reachability + apiKey validity
+(`/ping` unauthenticated, script list 401 = invalid key), declared-port
+occupancy via bind test (a port held by the project's own running process
+— Tinyvisor state `running` — is skipped, the pipeline restarts it), disk
+space against the artifact size (`internal/artifact/artifact.go::EnsureDiskSpaceFor`;
+unknown size degrades to warning), and declared dependency reachability
+(required + out of scope + unreachable = blocker; required but started by
+this run = warning; optional = warning). Rollback mode skips
+artifact/disk checks. `dry_run` passes the same gate (blockers refused)
+and records the report plus planned steps. The passing report is stored
+on the run record (`Run.Preflight`). Read-only surface:
+`GET /api/v1/deploy/preflight` (query `projects`/`group`), not subject to
+single-flight. Refused runs leave no run record.
+
 **Auth and credentials.** Mutating endpoints (`POST /deploy/run`,
 `POST /deploy/rollback`) require `X-Deploy-Token`; missing/unconfigured
 token ⇒ 503 (fail-closed), wrong token ⇒ 401. Read-only deploy endpoints
@@ -88,6 +111,7 @@ assets must follow the hard naming convention
 - `internal/manifest/manifest.go::LoadAggregate` — manifest loading.
 - `internal/manifest/validate.go::ValidateAggregate` — aggregate validation.
 - `internal/orchestrator/orchestrator.go::StartRun` — run/rollback/status semantics.
+- `internal/orchestrator/preflight.go::Preflight` — one-pass graded preflight gate.
 - `internal/orchestrator/pipeline.go::switchSymlink` — symlink/script/probe mechanics.
 - `internal/server/handlers_deploy.go::deployAuth` — fail-closed token auth.
 - E2E record 2026-11-08 (local, unprivileged, isolated ports): deploy v1 →
