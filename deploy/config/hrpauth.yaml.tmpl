@@ -64,7 +64,9 @@ oauth2:
     issuer: "${HRPAUTH_PUBLIC_URL}"
     public_client_id: "${HRPAUTH_PUBLIC_CLIENT_ID}"
     public_redirect_uris:
-        - ${HRPAUTH_PUBLIC_URL}/oauth/callback
+        # 回调落在前端域（既定设计），与代码"redirect_uris 由 frontend.url
+        # 派生"的约定保持一致（config.go migrateV3ToV4 / 默认配置生成器）。
+        - ${HRPAUTH_FRONTEND_URL}/oauth/callback
     refresh_token_ttl_sec: 2592000
     super_client_id: "${HRPAUTH_SUPER_CLIENT_ID}"
     super_client_secret: "${HRPAUTH_SUPER_CLIENT_SECRET}"

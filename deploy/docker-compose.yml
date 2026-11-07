@@ -14,10 +14,10 @@ name: ha-platform
 
 x-common-env: &common-env
   TZ: ${TZ:-Asia/Shanghai}
-  DB_HOST: ${DB_HOST}
+  DB_HOST: ${DB_HOST:?missing DB_HOST - set it in deploy/.env (see deploy/.env.example)}
   DB_PORT: ${DB_PORT:-3306}
-  DB_USER: ${DB_USER}
-  DB_PASSWORD: ${DB_PASSWORD}
+  DB_USER: ${DB_USER:?missing DB_USER - set it in deploy/.env (see deploy/.env.example)}
+  DB_PASSWORD: ${DB_PASSWORD:?missing DB_PASSWORD - set it in deploy/.env (see deploy/.env.example)}
   DB_NAME: ${DB_NAME:-hrpa}
   REDIS_HOST: ${REDIS_HOST}
   REDIS_PORT: ${REDIS_PORT:-6379}
@@ -52,9 +52,11 @@ services:
       HRPAUTH_URL: http://hrpauth:2778
       HRPAUTH_PUBLIC_URL: ${HRPAUTH_PUBLIC_URL}
       HRPAUTH_FRONTEND_URL: ${HRPAUTH_FRONTEND_URL}
-      HRPAUTH_PUBLIC_CLIENT_ID: ${HRPAUTH_PUBLIC_CLIENT_ID}
-      HRPAUTH_SUPER_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID}
-      HRPAUTH_SUPER_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET}
+      HRPAUTH_PUBLIC_CLIENT_ID: ${HRPAUTH_PUBLIC_CLIENT_ID:?missing HRPAUTH_PUBLIC_CLIENT_ID - set it in deploy/.env (see deploy/.env.example)}
+      # super 凭据空值=安全缺口（空 secret 对空 secret 校验放行），宁可 compose
+      # 起不来也不静默放过；值与 mca-server 段同源同一 .env 变量。
+      HRPAUTH_SUPER_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID:?missing HRPAUTH_SUPER_CLIENT_ID - set it in deploy/.env (see deploy/.env.example)}
+      HRPAUTH_SUPER_CLIENT_SECRET: ${HRPAUTH_SUPER_CLIENT_SECRET:?missing HRPAUTH_SUPER_CLIENT_SECRET - set it in deploy/.env (see deploy/.env.example); an empty super secret would authenticate empty-secret clients}
       # v13 oauth2.service_clients 种子：四个卫星服务 + HASkinLib 的专用客户端凭据。
       # 每对变量与对应服务自己配置中的凭据同源（同一个 .env 变量），
       # 保证"种子里的 secret"与"服务换令牌用的 secret"永远一致。
@@ -177,7 +179,7 @@ services:
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yaml
       HRPAUTH_URL: http://hrpauth:2778
-      HASKINPROXY_PUBLIC_URL: ${HASKINPROXY_PUBLIC_URL}
+      HASKINPROXY_PUBLIC_URL: ${HASKINPROXY_PUBLIC_URL:?missing HASKINPROXY_PUBLIC_URL - set it in deploy/.env (see deploy/.env.example); empty silently skips relay registration}
       # 服务凭据（v14 语义，必填）：填什么就按什么，运行时由服务自己判断——
       # 填 super 凭据 → 启动时经 POST /oauth/register 换取本服务低权限客户端
       # （client_id = presence 名 HASkinProxy）；填本服务专用低权限对 →
@@ -220,7 +222,7 @@ services:
       # 时才需要（作者 2026-11-05 拍板：以默认设置为准；
       # 见 WinnerProxy knowledge/0004 第 5 项）。
       HRPAUTH_YGG_URL: http://hrpauth-yggdrasil-api:2770
-      WINNERPROXY_PUBLIC_URL: ${WINNERPROXY_PUBLIC_URL}
+      WINNERPROXY_PUBLIC_URL: ${WINNERPROXY_PUBLIC_URL:?missing WINNERPROXY_PUBLIC_URL - set it in deploy/.env (see deploy/.env.example); empty silently skips relay registration}
       # 服务凭据（v14 语义，必填）：填什么就按什么，运行时由服务自己判断——
       # 填 super 凭据 → 启动时经 POST /oauth/register 换取本服务低权限客户端
       # （client_id = presence 名 WinnerProxy）；填本服务专用低权限对 →
@@ -268,7 +270,7 @@ services:
       # 与 maintenance_token 取自 .env。
       HRPAUTH_URL: http://hrpauth:2778
       HRPAUTH_PUBLIC_CLIENT_ID: ${HRPAUTH_PUBLIC_CLIENT_ID}
-      MCA_MAINTENANCE_TOKEN: ${MCA_MAINTENANCE_TOKEN}
+      MCA_MAINTENANCE_TOKEN: ${MCA_MAINTENANCE_TOKEN:?missing MCA_MAINTENANCE_TOKEN - set it in deploy/.env (see deploy/.env.example); empty silently disables OPS maintenance-token auth}
       # 服务身份（config 1.5.0）：注入 HRPAuth 内置 super client 凭据。
       # :? 语法保证缺值时 compose 直接报错，而不是带空值启动。
       HRPAUTH_SUPER_CLIENT_ID: ${HRPAUTH_SUPER_CLIENT_ID:?mca-server requires HRPAUTH_SUPER_CLIENT_ID (HRPAuth oauth2.super_client_id)}
@@ -374,7 +376,7 @@ services:
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yaml
       DEPLOYER_URL: http://ha-services-deployer:18080
-      MAINTENANCEVIEW_PUBLIC_URL: ${MAINTENANCEVIEW_PUBLIC_URL}
+      MAINTENANCEVIEW_PUBLIC_URL: ${MAINTENANCEVIEW_PUBLIC_URL:?missing MAINTENANCEVIEW_PUBLIC_URL - set it in deploy/.env (see deploy/.env.example)}
     volumes:
       - ./config/ha-services-maintenance-view.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - maintenanceview-data:/app/data
