@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -284,6 +285,14 @@ func validateBaremetal(rep *Report, m *Manifest) {
 	}
 	if inst.KeepReleases <= 0 {
 		inst.KeepReleases = 5
+	}
+	if inst.SharedData != "" {
+		// 必须相对部署根、不含 ..（防止逃出部署根或被版本清理波及）。
+		if filepath.IsAbs(inst.SharedData) {
+			rep.addf("%s: baremetal.install.shared_data 必须为相对部署根的路径", ctx)
+		} else if cleaned := filepath.Clean(inst.SharedData); cleaned != inst.SharedData || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+			rep.addf("%s: baremetal.install.shared_data 非法（不允许 .. 或非规范路径）", ctx)
+		}
 	}
 
 	art := bm.Artifact

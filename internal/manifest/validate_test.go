@@ -90,6 +90,53 @@ func validateSingleManifestYAML(t *testing.T, content string) *Report {
 	return ValidateAggregate(manifests, errs)
 }
 
+func TestValidateSharedData(t *testing.T) {
+	base := `
+manifest_version: 1
+project: svc-a
+display_name: Service A
+group: core
+service_version: "1.2.0"
+facts:
+  ports:
+    - { name: http, port: 2778, exposure: public }
+  health:
+    http: { port_name: http, path: /health, expect_status: 200, timeout_seconds: 3, interval_seconds: 1, retries: 5 }
+baremetal:
+  process: { manager: tinyvisor }
+  install: { root: /opt/svc-a, layout: releases, binary_name: svc-a, keep_releases: 3, shared_data: %s }
+  artifact: { source: local_path, local_path: /tmp/svc-a-linux-amd64 }
+`
+	cases := []struct {
+		value   string
+		wantErr string // 为空表示应通过
+	}{
+		{`"shared"`, ""},
+		{`"data/shared"`, ""},
+		{`"/abs/shared"`, "必须为相对部署根"},
+		{`"../escape"`, "非法"},
+		{`"a/../b"`, "非法"},
+	}
+	for _, c := range cases {
+		rep := validateSingleManifestYAML(t, fmt.Sprintf(base, c.value))
+		if c.wantErr == "" {
+			if !rep.OK() {
+				t.Errorf("shared_data=%s should pass, got: %v", c.value, rep.Errors)
+			}
+			continue
+		}
+		found := false
+		for _, e := range rep.Errors {
+			if strings.Contains(e, "shared_data") && strings.Contains(e, c.wantErr) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("shared_data=%s should be rejected with %q, got: %v", c.value, c.wantErr, rep.Errors)
+		}
+	}
+}
+
 func TestValidateSmoke_Valid(t *testing.T) {
 	rep := validateSingleManifestYAML(t, smokeManifestYAML(`
     - name: token-issue
