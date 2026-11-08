@@ -73,8 +73,9 @@ orchestration:
 Key rules:
 
 - **Manifest 模型**：每个项目仓库根目录一份 `deploy-manifest.yaml`；
-  `facts`（端口/健康/依赖/分组/数据目录）与运行时无关，容器阶段复用；
-  `baremetal`/`container` 为运行时执行方式，`container` 当前冻结。
+  `facts`（端口/健康/依赖/分组/数据目录）与运行时无关，两种运行时复用；
+  `baremetal`/`container` 为运行时执行方式，`runtime` 选择器按项目二选一
+  （默认 `baremetal`，可用 `overrides.<p>.runtime` 按部署上下文覆盖）。
 - **进程归 Tinyvisor**：编排器不常驻、不写 systemd、不自己拉进程。
 - **生效 = 软链切换 + 重启 + 健康**；只搬文件不算部署。幂等重跑即续跑。
 - **前置检查门（preflight）**：run/rollback 开局一次查全——目录/软链可写、
@@ -96,6 +97,39 @@ Key rules:
 - **产物**：本阶段统一 `artifact.source: local_path`（sha256 强制校验）；
   `ci_release` 已实现但未启用。将来启用发布时资产按硬约定命名：
   `<项目名>-linux-amd64` + `<项目名>-linux-amd64.sha256`。
+
+## Container runtime (opt-in)
+
+`runtime: container`（或 `overrides.<p>.runtime: container`）把项目切到容器
+编排：镜像即版本（标签 `<project>:<service_version>`），版本切换 = 同名容器
+重建，监督由 docker `--restart unless-stopped` 负责（容器项目不触碰
+Tinyvisor）。健康探测与冒烟断言打在发布的宿主口上，语义不变。带托管标签
+但项目已不在清单中的孤儿容器**默认只报不删**
+（`orchestration.container.orphan_policy: report | remove`）。
+设计与边界：`knowledge/0011-container-orchestration-minimal-loop.md`。
+
+回滚语义（重要，与裸金属的"切软链"对应）：
+
+- **回滚按镜像 digest 钉死，不按标签。** 标签是可移动的引用——同版本重打
+  一次标签，按标签回滚就会静默落到另一份内容上，且不报任何错。因此运行
+  记录存镜像内容摘要（`active_image_id`）；回滚（自动与一键）先校验该摘要的
+  镜像仍在、再按摘要定位重建；幂等判定也比较摘要而非标签。目标镜像已不
+  存在时**明确报"目标镜像已不存在"并拒绝**，绝不退回按标签定位、绝不落到
+  别的东西上。标签在记录里只作为人类可读的名字出现。
+- **`cascade: true` 跨运行时真实现**：容器依赖方按其自身当前运行的摘要
+  重建，裸金属依赖方经 Tinyvisor 重启，两侧都必须回到健康（含冒烟）。
+  不存在"接受 cascade 参数却只回滚一个"的降级形态。
+
+## 运维注意事项（docker CLI 踩坑）
+
+写容器相关的脚本/驱动前必读——这两条都在实测中踩过并修掉：
+
+1. **一律 `docker container inspect`，不要用裸 `docker inspect`。**
+   本编排器的项目名同时是镜像仓库名；同名镜像存在时，裸
+   `docker inspect <名字>` 会解析成**镜像**的 JSON（根本没有 `.State`），
+   静默返回错误对象。见 `internal/docker/docker.go::CLI.Inspect`。
+2. **inspect JSON 的运行状态字段是 `.State.Status`，不是 `.State.State`。**
+   `{{.State.State}}` 渲染为空字符串且不报错——静默错误，最坏的一类。
 
 ## Deployment facts (this service)
 

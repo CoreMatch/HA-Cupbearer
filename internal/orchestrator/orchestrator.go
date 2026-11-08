@@ -71,9 +71,12 @@ type ProjectResult struct {
 	Detail          string         `json:"detail,omitempty"`
 	DeclaredVersion string         `json:"declared_version"`
 	ActiveVersion   string         `json:"active_version,omitempty"`
-	Steps           []StepRecord   `json:"steps,omitempty"`
-	StartedAt       time.Time      `json:"started_at"`
-	FinishedAt      time.Time      `json:"finished_at"`
+	// ActiveImageID 是容器项目实际运行的镜像内容摘要（sha256:...）。
+	// 运行记录按它钉死回滚目标；标签只是人类可读的名字，不作定位依据。
+	ActiveImageID string       `json:"active_image_id,omitempty"`
+	Steps         []StepRecord `json:"steps,omitempty"`
+	StartedAt     time.Time    `json:"started_at"`
+	FinishedAt    time.Time    `json:"finished_at"`
 }
 
 type RunOptions struct {
@@ -219,7 +222,7 @@ func (o *Orchestrator) StartRun(opts RunOptions) (*Run, error) {
 	}
 
 	run := &Run{
-		ID:        time.Now().Format("20060102-150405"),
+		ID:        o.newRunID(""),
 		Type:      "deploy",
 		State:     "running",
 		Options:   opts,
@@ -262,6 +265,8 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 	}
 
 	// 候选版本：裸金属 = 版本目录列表；容器 = 镜像标签列表（新→旧）。
+	// 标签只回答"有哪些版本可选"；回滚定位一律按运行记录里的摘要，
+	// 标签可以重打移动，摘要不会撒谎。
 	var active string
 	var candidates []string
 	if eff.runtime == "container" {
@@ -295,13 +300,27 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 		return nil, fmt.Errorf("version %q is already active", target)
 	}
 
-	order := []string{project}
-	if cascade && eff.runtime != "container" {
-		order = append(order, requiredDependents(ms, project)...)
+	// 容器回滚：目标版本的镜像摘要从运行记录解析，并校验镜像仍在。
+	// 无记录或镜像已不存在 → 明确拒绝；绝不退回按标签定位——
+	// 标签重打一次，按标签回滚就会静默落到另一份内容上。
+	var targetDigest string
+	if eff.runtime == "container" {
+		targetDigest = o.store.ImageIDForVersion(project, target)
+		if targetDigest == "" {
+			return nil, fmt.Errorf("运行记录中没有 %s 版本 %s 的镜像摘要：无法钉死回滚目标（先部署该版本以记录其摘要）", project, target)
+		}
+		exists, err := o.docker.ImageExists(context.Background(), targetDigest)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, fmt.Errorf("目标镜像已不存在：版本 %s 的镜像摘要 %s 不在本机——拒绝回滚，不会回滚到任何其它镜像", target, shortID(targetDigest))
+		}
 	}
-	if cascade && eff.runtime == "container" {
-		// 容器依赖方的连带回滚重启本轮未实现，如实降级为单项回滚。
-		cascade = false
+
+	order := []string{project}
+	if cascade {
+		order = append(order, requiredDependents(ms, project)...)
 	}
 
 	// 单飞先行：已有运行就不必再跑前置检查。
@@ -321,7 +340,7 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 	}
 
 	run := &Run{
-		ID:        time.Now().Format("20060102-150405") + "-rb",
+		ID:        o.newRunID("-rb"),
 		Type:      "rollback",
 		State:     "running",
 		Options:   RunOptions{Projects: order},
@@ -343,11 +362,25 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 	// 快照先于执行协程：之后 run 会被执行侧并发写入。
 	snap := snapshotRun(run)
 	if eff.runtime == "container" {
-		go o.executeRollbackContainer(run, m, eff, target)
+		go o.executeRollbackContainer(run, m, eff, target, targetDigest, cascade)
 	} else {
 		go o.executeRollback(run, m, target, cascade)
 	}
 	return snap, nil
+}
+
+// newRunID 生成运行 ID（秒级时间戳 + 可选后缀）。同一秒内的多次运行
+// 追加序号避让——运行记录是回滚钉死 digest 的证据链，绝不允许同秒
+// 第二次运行静默覆盖第一次的记录。
+func (o *Orchestrator) newRunID(suffix string) string {
+	base := time.Now().Format("20060102-150405") + suffix
+	id := base
+	for i := 2; ; i++ {
+		if _, err := o.store.LoadRun(id); err != nil {
+			return id
+		}
+		id = fmt.Sprintf("%s-%d", base, i)
+	}
 }
 
 func (o *Orchestrator) prepare(projects []string, group string) ([]*manifest.Manifest, *manifest.Report, []string, error) {
@@ -395,6 +428,7 @@ func (o *Orchestrator) execute(run *Run, ms []*manifest.Manifest) {
 			state.Projects[name] = &ProjectState{
 				Outcome:       string(res.Outcome),
 				ActiveVersion: res.ActiveVersion,
+				ImageID:       res.ActiveImageID,
 				Detail:        res.Detail,
 				UpdatedAt:     time.Now(),
 			}
@@ -744,7 +778,7 @@ func (o *Orchestrator) executeRollback(run *Run, m *manifest.Manifest, target st
 			if !ok {
 				continue
 			}
-			depRes := o.restartDependent(ctx, dep)
+			depRes := o.restartDependentAny(ctx, dep)
 			run.Results[depName] = depRes
 			_ = o.store.SaveRun(run)
 		}
@@ -810,6 +844,7 @@ func (o *Orchestrator) finishRollbackRun(run *Run) {
 			state.Projects[name] = &ProjectState{
 				Outcome:       string(r.Outcome),
 				ActiveVersion: r.ActiveVersion,
+				ImageID:       r.ActiveImageID,
 				Detail:        r.Detail,
 				UpdatedAt:     time.Now(),
 			}
@@ -857,9 +892,11 @@ type ProjectStatusView struct {
 	Foreign         bool   `json:"foreign"`
 	DeclaredVersion string `json:"declared_version"`
 	ActiveVersion   string `json:"active_version,omitempty"`
-	TinyvisorState  string `json:"tinyvisor_state,omitempty"`
-	Healthy         *bool  `json:"healthy,omitempty"`
-	Detail          string `json:"detail,omitempty"`
+	// ActiveImageID 容器项目当前运行的镜像摘要（回滚定位依据，供核对）。
+	ActiveImageID  string `json:"active_image_id,omitempty"`
+	TinyvisorState string `json:"tinyvisor_state,omitempty"`
+	Healthy        *bool  `json:"healthy,omitempty"`
+	Detail         string `json:"detail,omitempty"`
 }
 
 type StatusReport struct {
@@ -918,7 +955,7 @@ func (o *Orchestrator) Status(ctx context.Context) (*StatusReport, error) {
 		eff := o.effective(m)
 		if eff.runtime == "container" {
 			view.Manager = "container"
-			view.ActiveVersion = o.containerActiveVersion(ctx, m)
+			view.ActiveVersion, view.ActiveImageID = o.containerActiveVersionAndImage(ctx, m)
 		} else {
 			view.Manager = eff.manager
 			view.ActiveVersion = readActiveVersion(eff.root)
