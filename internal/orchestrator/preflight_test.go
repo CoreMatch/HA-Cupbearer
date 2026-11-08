@@ -465,6 +465,51 @@ func TestPreflightRootNotWritableIsBlocker(t *testing.T) {
 	}
 }
 
+func TestPreflightSharedDataDirChecked(t *testing.T) {
+	env := newPreflightEnv(t)
+	// 给 svc-a 声明 shared_data（Load 每次从磁盘重读）。
+	svcPath := filepath.Join(env.scanRoot, "svc-a", "deploy-manifest.yaml")
+	data, err := os.ReadFile(svcPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m manifest.Manifest
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	m.Baremetal.Install.SharedData = "shared"
+	writeManifestFile(t, svcPath, &m)
+
+	// 目录尚不存在：结论必须是"将被创建"且放行。
+	report := runPreflight(t, env, "deploy")
+	assertNoFindings(t, report)
+	shared := findResults(report, "shared-data")
+	if len(shared) != 1 || !shared[0].OK || !strings.Contains(shared[0].Detail, "will be created") {
+		t.Fatalf("shared-data should be creatable, got %+v", shared)
+	}
+	// rollback 模式同样检查（回滚后进程同样读写共享目录）。
+	report = runPreflight(t, env, "rollback")
+	if shared = findResults(report, "shared-data"); len(shared) != 1 || !shared[0].OK {
+		t.Fatalf("rollback mode must still check shared-data, got %+v", shared)
+	}
+
+	// 普通文件占据共享目录 → 阻断（无法作为目录使用）。
+	if err := os.MkdirAll(env.root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(env.root, "shared"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report = runPreflight(t, env, "deploy")
+	shared = findResults(report, "shared-data")
+	if len(shared) != 1 || shared[0].OK || shared[0].Level != LevelBlocker {
+		t.Fatalf("shared path occupied by a file must be a blocker, got %+v", shared)
+	}
+	if !strings.Contains(shared[0].Detail, filepath.Join(env.root, "shared")) {
+		t.Errorf("blocker detail must carry the path: %s", shared[0].Detail)
+	}
+}
+
 func TestPreflightCurrentNotSymlinkIsBlocker(t *testing.T) {
 	env := newPreflightEnv(t)
 	if err := os.MkdirAll(filepath.Join(env.root, "current"), 0o755); err != nil {

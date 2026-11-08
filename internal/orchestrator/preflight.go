@@ -8,10 +8,10 @@ package orchestrator
 //   - warning（警告项）——能继续但有风险。
 // 每条结果必须带具体路径/端口/地址，不允许只说"检查失败"。
 //
-// 检查面（deploy 模式）：安装根目录/版本目录可写性、current 软链形态、
-// workdir、env 文件存在可读、smoke 引用的密钥可在凭据文件解析、
-// 目标端口占用（跳过"就是它自己"）、磁盘空间、
-// Manifest 声明的依赖可达性、Tinyvisor 可达与 apiKey 有效。
+// 检查面（deploy 模式）：安装根目录/版本目录/共享数据目录可写性、
+// current 软链形态、workdir、env 文件存在可读、
+// smoke 引用的密钥可在凭据文件解析、目标端口占用（跳过"就是它自己"）、
+// 磁盘空间、Manifest 声明的依赖可达性、Tinyvisor 可达与 apiKey 有效。
 // rollback 模式不查产物与磁盘（不拉新产物），其余相同。
 
 import (
@@ -222,6 +222,17 @@ func (o *Orchestrator) checkInstallPaths(m *manifest.Manifest, eff effective, mo
 			report.add(CheckResult{Project: m.Project, Name: "version-dir", Level: LevelBlocker, Detail: err.Error()})
 		} else {
 			report.add(CheckResult{Project: m.Project, Name: "version-dir", OK: true, Detail: detail})
+		}
+	}
+
+	// 共享数据目录（声明时）：启动脚本把它注入为进程数据根，部署时创建；
+	// 不可创建即阻断（两种模式都查——回滚后进程同样要读写它）。
+	if shared := m.Baremetal.Install.SharedData; shared != "" {
+		sharedDir := filepath.Join(root, shared)
+		if detail, err := probeWritable(sharedDir); err != nil {
+			report.add(CheckResult{Project: m.Project, Name: "shared-data", Level: LevelBlocker, Detail: err.Error()})
+		} else {
+			report.add(CheckResult{Project: m.Project, Name: "shared-data", OK: true, Detail: detail})
 		}
 	}
 

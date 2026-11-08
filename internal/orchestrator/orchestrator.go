@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -430,6 +432,12 @@ func (o *Orchestrator) executeProject(ctx context.Context, run *Run, raw *manife
 		res.Outcome = OutcomeDryRun
 		res.Steps = append(res.Steps,
 			StepRecord{Name: "artifact", OK: true, Detail: "dry-run: stage " + m.Baremetal.Artifact.Source},
+		)
+		if shared := m.Baremetal.Install.SharedData; shared != "" {
+			res.Steps = append(res.Steps, StepRecord{Name: "ensure-shared", OK: true,
+				Detail: "dry-run: mkdir " + filepath.Join(eff.root, shared)})
+		}
+		res.Steps = append(res.Steps,
 			StepRecord{Name: "symlink", OK: true, Detail: "dry-run: current -> releases/" + m.ServiceVersion},
 			StepRecord{Name: "ensure-script", OK: true, Detail: "dry-run: upsert " + m.Project},
 			StepRecord{Name: "restart", OK: true, Detail: "dry-run: restart via tinyvisor"},
@@ -465,6 +473,17 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 		res.Outcome = OutcomeFailed
 		res.Detail = "artifact stage failed"
 		return
+	}
+
+	// 1.5 共享数据目录：声明 shared_data 时，配置与数据落在版本目录之外。
+	// 幂等确保存在；版本切换与 prune 从不触碰该目录，升级不重置数据。
+	if shared := m.Baremetal.Install.SharedData; shared != "" {
+		sharedDir := filepath.Join(eff.root, shared)
+		if err = os.MkdirAll(sharedDir, 0o755); !addStep("ensure-shared", err, sharedDir) {
+			res.Outcome = OutcomeFailed
+			res.Detail = "shared data dir creation failed"
+			return
+		}
 	}
 
 	// 2. 软链：原子切换 current -> releases/<version>。

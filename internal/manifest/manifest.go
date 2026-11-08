@@ -159,6 +159,15 @@ type InstallSpec struct {
 	Layout       string `yaml:"layout" json:"layout"` // releases
 	BinaryName   string `yaml:"binary_name" json:"binary_name"`
 	KeepReleases int    `yaml:"keep_releases" json:"keep_releases"`
+	// SharedData 声明共享数据目录（相对部署根）：不随版本升级重置的配置
+	// 与数据（配置文件、地图、模组、运行数据）落在这里，releases/ 只放
+	// 二进制。编排器部署时幂等创建该目录；版本切换与 prune 从不触碰它。
+	// 声明后启动脚本以 env 注入 avalonhelper.basePath=<根>/<SharedData>
+	// 绝对路径——带点变量名无法经 env_file 注入（shell 赋值语法不允许
+	// 点号），只能由脚本内 env 命令直接设置。变量名当前为 Avalon 专有
+	// （其 internal/util/file resolveBasePath 读取该键）；他服务如需共享
+	// 数据目录，再泛化为按服务声明变量名。
+	SharedData string `yaml:"shared_data" json:"shared_data"`
 }
 
 type ArtifactSpec struct {

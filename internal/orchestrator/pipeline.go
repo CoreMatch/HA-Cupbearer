@@ -126,13 +126,22 @@ func listReleases(root string) ([]string, error) {
 // renderScript 生成 Tinyvisor 登记的启动脚本。
 // 约定：workdir 为部署根；脚本必须以 exec 结尾，保证 Tinyvisor 的
 // SIGTERM 直达服务进程本身（而不是外层 shell）。
+// 声明 shared_data 时，exec 行经 env 注入 avalonhelper.basePath 绝对路径
+// （带点变量名无法经 env_file/shell 赋值注入，只能由 env 命令直接设置），
+// 使进程的配置与数据落在版本目录之外的共享目录。
 func renderScript(m *manifest.Manifest) string {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\nset -e\n")
 	if envFile := m.Baremetal.Process.Tinyvisor.EnvFile; envFile != "" {
 		fmt.Fprintf(&b, "if [ -f %q ]; then set -a; . %q; set +a; fi\n", envFile, envFile)
 	}
-	fmt.Fprintf(&b, "exec ./current/%s\n", m.Baremetal.Install.BinaryName)
+	bin := "./current/" + m.Baremetal.Install.BinaryName
+	if shared := m.Baremetal.Install.SharedData; shared != "" {
+		basePath := filepath.Join(m.Baremetal.Install.Root, shared)
+		fmt.Fprintf(&b, "exec env %q %s\n", "avalonhelper.basePath="+basePath, bin)
+		return b.String()
+	}
+	fmt.Fprintf(&b, "exec %s\n", bin)
 	return b.String()
 }
 
