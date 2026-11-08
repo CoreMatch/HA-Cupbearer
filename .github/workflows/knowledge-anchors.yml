@@ -6,9 +6,14 @@
 # keeps a local copy — a stale pinned copy would silently stop
 # enforcing newer rules (e.g. content fingerprints).
 #
-# Failure mode is fail-red: a fetch failure (network, 404, rename) or
-# a degraded fetch (empty/truncated/wrong body) aborts the job. This
-# check must never degrade into "nothing checked, green".
+# Failure mode is fail-red at every stage:
+#   - fetch failure (network, 404, rename) or degraded fetch
+#     (empty/truncated/wrong body) aborts the job;
+#   - the checker's self-test runs before the real check, so a broken
+#     script that made it onto HA-Contract main turns every consuming
+#     repo red with a clear reason instead of failing open into a
+#     false green. Batch-failing loudly is acceptable; silently
+#     checking nothing is not.
 #
 # ANCHOR_ALLOW_MISSING_ABS_PATHS=1 skips absolute-path anchors that
 # point at sibling repositories absent from a single-repo CI checkout;
@@ -29,15 +34,24 @@ jobs:
       - name: Fetch anchor checker from HA-Contract
         run: |
           set -euo pipefail
+          base="https://raw.githubusercontent.com/CoreMatch/HA-Contract/main/scripts"
+          dest="$RUNNER_TEMP/anchor-check"
+          mkdir -p "$dest/tests/anchor-fixture/knowledge"
           # Retry transient network flakes; any persistent failure aborts.
-          curl -fsSL --retry 3 --retry-delay 2 \
-            https://raw.githubusercontent.com/CoreMatch/HA-Contract/main/scripts/check-knowledge-anchors.sh \
-            -o "$RUNNER_TEMP/check-knowledge-anchors.sh"
+          curl -fsSL --retry 3 --retry-delay 2 "$base/check-knowledge-anchors.sh" \
+            -o "$dest/check-knowledge-anchors.sh"
+          curl -fsSL --retry 3 --retry-delay 2 "$base/tests/anchor-fixture/knowledge/fixture.md" \
+            -o "$dest/tests/anchor-fixture/knowledge/fixture.md"
+          curl -fsSL --retry 3 --retry-delay 2 "$base/tests/anchor-fixture/sample.txt" \
+            -o "$dest/tests/anchor-fixture/sample.txt"
           # Guard against a degraded fetch: the real checker identifies
           # itself in its header line; anything else fails the job red.
-          test -s "$RUNNER_TEMP/check-knowledge-anchors.sh"
+          test -s "$dest/check-knowledge-anchors.sh"
           grep -q "check-knowledge-anchors.sh — mechanical drift check" \
-            "$RUNNER_TEMP/check-knowledge-anchors.sh"
+            "$dest/check-knowledge-anchors.sh"
+
+      - name: Checker self-test (a broken script must fail red here)
+        run: bash "$RUNNER_TEMP/anchor-check/check-knowledge-anchors.sh" --self-test
 
       - name: Check knowledge anchors
-        run: ANCHOR_ALLOW_MISSING_ABS_PATHS=1 bash "$RUNNER_TEMP/check-knowledge-anchors.sh"
+        run: ANCHOR_ALLOW_MISSING_ABS_PATHS=1 bash "$RUNNER_TEMP/anchor-check/check-knowledge-anchors.sh"
