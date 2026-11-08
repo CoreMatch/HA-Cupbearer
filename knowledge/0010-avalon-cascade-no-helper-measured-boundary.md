@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (records measured state, 2026-11-08)
+Accepted (records measured state, 2026-11-08; all four deployment
+pitfalls below FIXED and re-measured 2026-11-08)
 
 ## Context
 
@@ -83,32 +84,59 @@ value; code default 5123 is yielded to the Cascade edge) + 5125
 
 ## Deployment pitfalls found by running it (first-mover notes)
 
-- **Avalon config/data is tied to the executable dir**: `BasePath()` =
-  `filepath.Dir(os.Executable())` (`internal/util/file`), so
-  `data/Config.json` resolves inside the release dir
-  (`releases/<v>/data/`), not the install root. The pipeline stages only
-  the binary — Avalon auto-initializes default config on first boot
-  (`cascadeEnable:false`), silently ignoring any config seeded at the
-  install root. The E2E seeded `releases/1.0.0/data/Config.json`
-  manually. An env pin exists (`avalonhelper.basePath`,
-  `GetOrEnv` in `internal/util/systemprops`) but the dotted name cannot
-  be set by the shell-sourced env-file mechanism; a script/render change
-  would be needed to use it. **Open item**: config seeding for Avalon in
-  the pipeline (or artifact = tarball of the dist layout).
-- **Avalon first-run prompt blocks on stdin** ("WEB panel to help you
-  initialize? Yes/No", `internal/app/initialization.go` firstRunPrompt,
-  gated by the `initStart` setting persisted in `data/Settings.bin`).
-  Unattended deploys must pre-seed `Settings.bin` (initStart=false) or
-  answer once via console; otherwise boot blocks before the auto-start.
-- **Cascade needs `internal/database/migrations/` relative to CWD**
-  (`internal/database/migrate.go`); a bare binary fails with
-  `migrations directory not found`. The artifact must bundle the
-  migrations dir (tarball or post-stage copy). **Open item** likewise.
-- **Tinyvisor restart-by-name after a crash**: when the supervised
-  process exited (crash loop), `POST /api/scripts/by-name/<n>/restart`
-  answered 400 `session not found` while the id-based `/start` worked.
-  Deploy pipeline restarts can hit this for crash-looping services;
-  reported for the Tinyvisor side to address.
+All four were FIXED and re-measured in the isolated environment on
+2026-11-08. Kept here as the record of what broke and how.
+
+- **FIXED — Avalon config/data tied to the executable dir**: `BasePath()`
+  fell back to `filepath.Dir(os.Executable())` (`internal/util/file`),
+  so under the `releases/<v>/` layout every upgrade reset config, maps,
+  mods and runtime data. Fix: `baremetal.install.shared_data` manifest
+  field (Deployer `feat/shared-data-dir`). The orchestrator creates
+  `<root>/shared/` and never touches it on version switch/prune; the
+  rendered startup script injects the absolute path via
+  `exec env "avalonhelper.basePath=<root>/shared" ./current/<binary>`
+  (the dotted name cannot go through env_file/shell assignment, so it is
+  written into the script directly). Avalon's manifest declares
+  `shared_data: shared`. Measured: deploy v1.0.0 → write marker +
+  record checksums in `shared/` → upgrade to v1.0.1 → marker present,
+  `Config.json`/`Settings.bin` byte-identical, `releases/1.0.1/` holds
+  only the binary (runs `20261108-084109`, `20261108-084434`).
+- **FIXED — Avalon first-run prompt blocked on stdin**: the "WEB panel
+  to help you initialize? Yes/No" prompt (`internal/app/initialization.go`
+  firstRunPrompt) read stdin unbounded. Tinyvisor starts scripts under a
+  PTY, so stdin *is* a terminal but nobody answers — unattended boot hung
+  (measured: `[ -t 0 ]` → true under Tinyvisor; `SetReadDeadline` →
+  "file type does not support deadline" on the PTY). Fix (Avalon
+  `fix/unattended-firstrun`): non-terminal stdin skips the prompt;
+  terminal stdin uses a bounded wait (`WaitLicenseBounded`, 30s); both
+  paths take the default (no WEB-panel init), log one line and persist
+  `initStart=false` so it never asks again for that data dir. Measured:
+  prompt shown 08:41:11 → timed out 08:41:41 → boot completed; after the
+  v1.0.1 upgrade no prompt at all.
+- **FIXED — Cascade needed `internal/database/migrations/` on disk**:
+  `RunMigrations` resolved the dir CWD-relative, so a bare binary failed
+  with `migrations directory not found`. Chosen fix (Cascade
+  `fix/embed-migrations`): embed the SQL into the binary
+  (`go:embed migrations/{sqlite,mysql}/*.sql` + golang-migrate `iofs`)
+  instead of bundling the dir in the artifact or copying at stage time —
+  the single-binary artifact contract (sha256, atomic rename, staging,
+  disk preflight) stays untouched and migrations can never be missing or
+  out of sync with the binary. Measured: deleted the migrations dir and
+  the DB from the install root, redeployed the bare binary →
+  `[migrate] migrations completed successfully`, tables created, health +
+  edge-rooms smoke ok (run `20261108-084629`).
+- **FIXED — Tinyvisor restart-by-name after a crash**: a crashed process
+  has its session cleaned up immediately while the app-level status flips
+  only on the next 2s watch tick; in that window restart tried to stop a
+  gone session and answered 400 `session not found` (id-based `/start`
+  worked because it never stops). Fix (Minivisor
+  `fix/restart-crashed-session`): `ErrSessionNotFound` sentinel; stop/kill
+  treat a gone session as already stopped (idempotent); the auto-restart
+  path skips when the script is already running again. Measured on the
+  live E2E instance: kill → by-name restart → old binary 400, fixed
+  binary 200 with a fresh PID. Regression tests in
+  `backend/restart_test.go` (crashed-session window, stopped state,
+  idempotent stop).
 
 ## Evidence
 
@@ -116,7 +144,11 @@ value; code default 5123 is yielded to the Cascade edge) + 5125
   avalon health failed — config not read, cascade skipped by failure
   isolation), `20261108-074034.json` (avalon deployed + 2 smokes ok,
   cascade restart 400), `20261108-074432.json` (avalon up-to-date,
-  cascade deployed + smoke ok) — isolated environment state dir.
+  cascade deployed + smoke ok), `20261108-084109.json` (avalon 1.0.0 on
+  shared layout, ensure-shared step, prompt timeout measured),
+  `20261108-084434.json` (avalon 1.0.1 upgrade, shared data intact),
+  `20261108-084629.json` (cascade bare binary, embedded migrations) —
+  isolated environment state dir.
 - Measurements: `/v1/rooms` 200 snapshot; `/v1/health` 503
   `BACKEND_NOT_READY`; console `start` → `game: no simulation backend
   available`; Cascade `/healthz` 200, `/readyz` 503
