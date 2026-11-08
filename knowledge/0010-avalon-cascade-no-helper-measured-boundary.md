@@ -122,9 +122,9 @@ value; code default 5123 is yielded to the Cascade edge) + 5125
   available`; Cascade `/healthz` 200, `/readyz` 503
   `cascade_backend_unavailable`, `/api/rooms` → GW01, `/api/backends` →
   `healthy:false, roomCount:1`.
-- Code anchors: `internal/net/gateway/control.go::handleHealth`,
-  `internal/command/start.go::registerStartGame`,
-  `internal/game/seam.go::ErrNotImplemented` (Avalon);
-  `internal/backend/directory.go::Ready`,
-  `internal/backend/client.go::Health`,
-  `internal/api/proxy_http.go` readyz/backends (Cascade).
+- Code anchors: [xref] `internal/net/gateway/control.go::handleHealth`,
+  [xref] `internal/command/start.go::registerStartGame`,
+  [xref] `internal/game/seam.go::ErrNotImplemented` (Avalon);
+  [xref] `internal/backend/directory.go::Ready`,
+  [xref] `internal/backend/client.go::Health`,
+  [xref] `internal/api/proxy_http.go` readyz/backends (Cascade).
