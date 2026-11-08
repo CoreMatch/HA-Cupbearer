@@ -87,6 +87,9 @@ Key rules:
   `facts.smoke` 的项目在健康判定后还要跑真实请求（方法/路径/期望状态码/
   响应体断言），冒烟失败 = 部署失败，走同样的自动回滚。密钥值只以
   `${secret:<name>}` 引用，从凭据文件 `smoke_secrets` 解析，绝不进 Manifest。
+  托管 SPA 的服务注意：静态回退会对未知路径一律回 200 + text/html，
+  伪造"服务活着"的假象——冒烟断言用 `expect_content_type`
+  （如 `application/json`）先照出回退，再核对响应体字段。
 - **`manager: aapanel|manual` 的项目一律 foreign**：只读、绝不触碰。
 - **鉴权 fail-closed**：变更端点必须携带 `X-Deploy-Token`；令牌未配置时
   返回 503，任何情况下不放开为无鉴权。运维面板经服务端转发令牌，
@@ -119,6 +122,11 @@ Tinyvisor）。健康探测与冒烟断言打在发布的宿主口上，语义�
 - **`cascade: true` 跨运行时真实现**：容器依赖方按其自身当前运行的摘要
   重建，裸金属依赖方经 Tinyvisor 重启，两侧都必须回到健康（含冒烟）。
   不存在"接受 cascade 参数却只回滚一个"的降级形态。
+- **镜像构建可复现**（回滚钉死 digest 的前提）：构建固定
+  `--provenance=false --sbom=false` + `SOURCE_DATE_EPOCH=0`——同输入
+  连续两次构建摘要一致（非确定性来源是 BuildKit 默认的
+  provenance/attestation 清单，携带构建时间戳）。仍不可复现的边界：
+  基础镜像标签被上游重推、上下文内容真实变化——那属于输入变了。
 
 ## 运维注意事项（docker CLI 踩坑）
 
