@@ -121,3 +121,27 @@ func TestLoadAggregate_ExternalDuplicateLosesToRepo(t *testing.T) {
 		t.Fatalf("external duplicate must be recorded: %+v", dups)
 	}
 }
+
+func TestResolveLocalPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		localPath  string
+		sourcePath string
+		want       string
+	}{
+		{"absolute stays", "/srv/build/avalon", "/ws/Avalon/deploy-manifest.yaml", "/srv/build/avalon"},
+		{"relative resolves against manifest dir", "build/avalon", "/ws/Avalon/deploy-manifest.yaml", filepath.Join("/ws/Avalon", "build", "avalon")},
+		{"relative without source path keeps cwd semantics", "build/avalon", "", "build/avalon"},
+		{"empty stays empty", "", "/ws/Avalon/deploy-manifest.yaml", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manifest{SourcePath: tt.sourcePath}
+			m.Baremetal.Artifact.Source = "local_path"
+			m.Baremetal.Artifact.LocalPath = tt.localPath
+			if got := m.ResolveLocalPath(); got != tt.want {
+				t.Errorf("ResolveLocalPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
