@@ -85,9 +85,9 @@ func validateSingle(rep *Report, m *Manifest) {
 		rep.addf("%s: manifest_version 必须为 %d（当前 %d）", ctx, SchemaVersion, m.ManifestVersion)
 	}
 	switch m.Kind {
-	case "service", "external":
+	case "service", "external", "plugin":
 	default:
-		rep.addf("%s: kind 必须为 service 或 external（当前 %q）", ctx, m.Kind)
+		rep.addf("%s: kind 必须为 service、external 或 plugin（当前 %q）", ctx, m.Kind)
 	}
 	if m.Project == "" {
 		rep.addf("%s: project 不能为空", m.SourcePath)
@@ -118,7 +118,15 @@ func validateSingle(rep *Report, m *Manifest) {
 		rep.addf("%s: service_version 不能为空", ctx)
 	}
 
+	if !m.IsPlugin() && m.Plugin != nil {
+		rep.addf("%s: 仅 kind=plugin 清单可声明 plugin 段", ctx)
+	}
+
 	validateFacts(rep, m)
+	if m.IsPlugin() {
+		validatePlugin(rep, m)
+		return
+	}
 	// 两段共存、按选择器校验生效的一段；未生效段为信息性声明不校验。
 	if m.Runtime == "container" {
 		validateContainer(rep, m)
@@ -152,7 +160,10 @@ func validateFacts(rep *Report, m *Manifest) {
 
 	probe := m.Facts.Health.HTTP
 	if probe == nil {
-		rep.addf("%s: facts.health.http 必填（编排器健康判定与状态可见性依赖它）", ctx)
+		// 插件型产物没有自己的进程与健康面：豁免。
+		if !m.IsPlugin() {
+			rep.addf("%s: facts.health.http 必填（编排器健康判定与状态可见性依赖它）", ctx)
+		}
 	} else {
 		if !portNames[probe.PortName] {
 			rep.addf("%s: facts.health.http.port_name %q 未在 facts.ports 中声明", ctx, probe.PortName)
@@ -309,6 +320,57 @@ func validateExternal(rep *Report, m *Manifest) {
 	}
 }
 
+// validatePlugin 校验 kind=plugin 清单的安装目标与产物声明。
+// 缺字段一律响亮失败：插件条目宁可拒绝装载，也不允许含糊登记。
+func validatePlugin(rep *Report, m *Manifest) {
+	ctx := m.Project
+	p := m.Plugin
+	if p == nil {
+		rep.addf("%s: kind=plugin 清单必须声明 plugin 段（runtime/plugins_dir/artifact）", ctx)
+		return
+	}
+
+	// 插件没有自己的进程：裸金属/容器执行段对它无意义，出现即报错。
+	if m.Baremetal.Process.Manager != "" {
+		rep.addf("%s: kind=plugin 清单不应携带 baremetal.process.manager（插件没有自己的进程）", ctx)
+	}
+	if m.Runtime == "container" {
+		rep.addf("%s: kind=plugin 清单的 runtime 不能为 container（插件装进目标运行时，不是容器）", ctx)
+	}
+
+	if strings.TrimSpace(p.Runtime) == "" {
+		rep.addf("%s: plugin.runtime 必填（承载插件的目标运行时，如 velocity-proxy / bukkit-server）", ctx)
+	}
+	if p.TargetProject == m.Project {
+		rep.addf("%s: plugin.target_project 不能指向自身", ctx)
+	}
+
+	dir := p.PluginsDir
+	if strings.TrimSpace(dir) == "" {
+		rep.addf("%s: plugin.plugins_dir 必填（插件产物放入的目录，相对目标运行时工作目录，如 plugins）", ctx)
+	} else if filepath.IsAbs(dir) {
+		rep.addf("%s: plugin.plugins_dir 必须为相对目标运行时工作目录的路径", ctx)
+	} else if cleaned := filepath.Clean(dir); cleaned != dir || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		rep.addf("%s: plugin.plugins_dir 非法（不允许 .. 或非规范路径）", ctx)
+	}
+
+	art := p.Artifact
+	if !validSources[art.Source] {
+		rep.addf("%s: plugin.artifact.source 非法（当前 %q），支持 ci_release | local_path", ctx, art.Source)
+		return
+	}
+	switch art.Source {
+	case "ci_release":
+		if art.Release.Repo == "" {
+			rep.addf("%s: plugin.artifact.release.repo 必填", ctx)
+		}
+	case "local_path":
+		if art.LocalPath == "" {
+			rep.addf("%s: plugin.artifact.local_path 必填", ctx)
+		}
+	}
+}
+
 func validateBaremetal(rep *Report, m *Manifest) {
 	ctx := m.Project
 	bm := m.Baremetal
@@ -413,6 +475,12 @@ func validateDependencies(rep *Report, byProject map[string]*Manifest) {
 		for _, d := range m.Facts.DependsOn {
 			if _, ok := byProject[d.Project]; !ok {
 				rep.addf("%s: 依赖 %q 不存在于聚合清单中", name, d.Project)
+			}
+		}
+		// 插件的安装目标若指向编排体系内的项目，该项目必须存在。
+		if m.IsPlugin() && m.Plugin != nil && m.Plugin.TargetProject != "" {
+			if _, ok := byProject[m.Plugin.TargetProject]; !ok {
+				rep.addf("%s: plugin.target_project %q 不存在于聚合清单中", name, m.Plugin.TargetProject)
 			}
 		}
 	}

@@ -75,13 +75,20 @@ func (h *Handler) GetDeployManifests(c *gin.Context) {
 	}
 	views := make([]view, 0, len(manifests))
 	for _, m := range manifests {
+		manager := m.Baremetal.Process.Manager
+		if m.IsExternal() {
+			manager = ""
+		}
+		if m.IsPlugin() {
+			manager = "plugin"
+		}
 		views = append(views, view{
 			Project:        m.Project,
 			Kind:           m.Kind,
 			DisplayName:    m.DisplayName,
 			Group:          m.Group,
 			ServiceVersion: m.ServiceVersion,
-			Manager:        m.Baremetal.Process.Manager,
+			Manager:        manager,
 			SourcePath:     m.SourcePath,
 		})
 	}

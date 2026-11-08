@@ -929,3 +929,69 @@ func TestPreflightArtifactPresentIsReportedOK(t *testing.T) {
 		t.Fatalf("expected exactly one ok artifact result, got %+v", results)
 	}
 }
+
+// TestPluginManifestsRegisteredNotDeployed 覆盖 kind=plugin 条目的全链路：
+// 聚合校验通过、preflight 只报登记结论、运行（哪怕 dry-run）不产生
+// 部署动作而是 OutcomePlugin、回滚被明确拒绝。
+func TestPluginManifestsRegisteredNotDeployed(t *testing.T) {
+	env := newPreflightEnv(t)
+	pluginYAML := `manifest_version: 1
+kind: plugin
+project: plug-a
+display_name: Plugin A
+group: edge
+service_version: "1.0.0"
+facts:
+  depends_on:
+    - { project: svc-a, kind: required }
+  migration: { mode: none }
+plugin:
+  runtime: velocity-proxy
+  plugins_dir: plugins
+  artifact: { source: local_path, local_path: target/plug-a.jar }
+`
+	path := filepath.Join(env.scanRoot, "plug-a", "deploy-manifest.yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(pluginYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, rep := env.orch.Load(); !rep.OK() {
+		t.Fatalf("plugin manifest must pass aggregate validation: %v", rep.Errors)
+	}
+
+	report := runPreflight(t, env, "deploy")
+	results := findResults(report, "plugin")
+	if len(results) != 1 || !results[0].OK || results[0].Project != "plug-a" {
+		t.Fatalf("expected one ok plugin result, got %+v", results)
+	}
+	if !strings.Contains(results[0].Detail, "velocity-proxy") {
+		t.Fatalf("plugin detail must name the install target runtime: %s", results[0].Detail)
+	}
+
+	run, err := env.orch.StartRun(RunOptions{Projects: []string{"svc-a", "plug-a"}, DryRun: true})
+	if err != nil {
+		t.Fatalf("start run: %v", err)
+	}
+	for run.State == "running" {
+		time.Sleep(10 * time.Millisecond)
+		run = env.orch.CurrentRun()
+	}
+	plugRes, ok := run.Results["plug-a"]
+	if !ok || plugRes.Outcome != OutcomePlugin {
+		t.Fatalf("plug-a outcome = %+v, want plugin", plugRes)
+	}
+	if len(plugRes.Steps) != 0 {
+		t.Fatalf("plugin entry must not produce deploy steps, got %+v", plugRes.Steps)
+	}
+	if svcRes := run.Results["svc-a"]; svcRes == nil || svcRes.Outcome != OutcomeDryRun {
+		t.Fatalf("svc-a outcome = %+v, want dry-run", svcRes)
+	}
+
+	if _, err := env.orch.Rollback("plug-a", "", false); err == nil ||
+		!strings.Contains(err.Error(), "plugin artifact") {
+		t.Fatalf("rollback of plugin entry must be refused with reason, got %v", err)
+	}
+}
