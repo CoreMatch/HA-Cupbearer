@@ -97,6 +97,44 @@ func TestLoadAggregate_ExcludesNonRepoDirs(t *testing.T) {
 	}
 }
 
+// 凭据绝不进清单：装载层代码级拦截（注释与约定拦不住人）。
+func TestLoadFile_RejectsCredentialLikeContent(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{"github token 值", strings.Replace(validManifest, "local_path: /tmp/svc-a-linux-amd64", "local_path: ghp_abcdef1234567890abcdef1234567890", 1)},
+		{"AWS access key 值", strings.Replace(validManifest, "service_version: \"1.2.0\"", "service_version: AKIAABCDEFGHIJKLMNOP", 1)},
+		{"私钥块", strings.Replace(validManifest, "display_name: Service A", "display_name: \"-----BEGIN RSA PRIVATE KEY-----\"", 1)},
+		{"凭据类键名带字面值", strings.Replace(validManifest, "local_path: /tmp/svc-a-linux-amd64", "local_path: /tmp/x\n    api_key: super-secret-value", 1)},
+		{"非法占位符", strings.Replace(validManifest, "local_path: /tmp/svc-a-linux-amd64", "local_path: ${env:SOME_VALUE}", 1)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeManifest(t, dir, "svc-a", c.content)
+			if _, err := LoadFile(path); err == nil {
+				t.Fatalf("expected credential-like content to be rejected")
+			} else if !strings.Contains(err.Error(), "凭据") && !strings.Contains(err.Error(), "占位符") {
+				t.Fatalf("error should point at credentials, got: %v", err)
+			}
+		})
+	}
+}
+
+// 合法内容不误伤：${secret:<name>} 引用、普通路径与版本号照常装载。
+func TestLoadFile_AllowsSecretRefsAndOrdinaryValues(t *testing.T) {
+	dir := t.TempDir()
+	path := writeManifest(t, dir, "svc-a", smokeManifestYAML(`
+    - name: with-header
+      path: /internal
+      headers: { X-Internal-Key: "${secret:internal-key}" }
+`))
+	if _, err := LoadFile(path); err != nil {
+		t.Fatalf("secret reference must be allowed, got: %v", err)
+	}
+}
+
 func TestLoadAggregate_ExternalDuplicateLosesToRepo(t *testing.T) {
 	base := t.TempDir()
 	scanRoot := filepath.Join(base, "scan")

@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -35,9 +36,14 @@ type Manifest struct {
 	DisplayName     string    `yaml:"display_name" json:"display_name"`
 	Group           string    `yaml:"group" json:"group"`
 	ServiceVersion  string    `yaml:"service_version" json:"service_version"`
-	Facts           Facts     `yaml:"facts" json:"facts"`
-	Baremetal       Baremetal `yaml:"baremetal" json:"baremetal"`
-	Container       Container `yaml:"container" json:"container"`
+	// Runtime 选择本项目生效的执行形态：baremetal（默认）| container。
+	// baremetal 与 container 两段在清单里共存（各自声明该形态怎么跑），
+	// 执行时按本选择器互斥取一；部署上下文可用 overrides.<p>.runtime 覆盖
+	// （如生产裸金属、隔离环境容器）。
+	Runtime    string    `yaml:"runtime" json:"runtime"`
+	Facts      Facts     `yaml:"facts" json:"facts"`
+	Baremetal  Baremetal `yaml:"baremetal" json:"baremetal"`
+	Container  Container `yaml:"container" json:"container"`
 
 	// SourcePath 记录装载来源（校验报告用），不参与序列化。
 	SourcePath string `yaml:"-" json:"source_path"`
@@ -210,9 +216,39 @@ type ReleaseSpec struct {
 	ChecksumAsset string `yaml:"checksum_asset" json:"checksum_asset"`
 }
 
-// Container 为容器执行方式预留段，当前冻结不实现。
+// Container 是容器运行时的执行声明（2026-11-08 容器阶段启用）。
+// 与 Baremetal 段共存于清单，由顶层 runtime 选择器决定生效形态。
 type Container struct {
+	// Enabled 已退役：冻结期的历史字段，现存清单均为 false。新清单用
+	// 顶层 runtime 选择器；设为 true 会被校验拒绝并指向新写法。
 	Enabled bool `yaml:"enabled" json:"enabled"`
+	Image   ImageSpec    `yaml:"image" json:"image"`
+	Volumes []VolumeSpec `yaml:"volumes,omitempty" json:"volumes,omitempty"`
+	// ContainerPorts 可选：容器内监听口与 facts.ports 不一致时按端口名
+	// 覆盖（宿主侧发布口仍取 facts.ports / overrides.ports）。
+	ContainerPorts map[string]int `yaml:"container_ports,omitempty" json:"container_ports,omitempty"`
+}
+
+// ImageSpec 声明容器镜像来源。三态：
+//   - build — 本地构建（隔离环境/开发正路）：context 相对仓库根；
+//   - local_image — docker-save 压缩包（镜像版 local_path），
+//     旁路 <local_path>.sha256 校验，与裸金属产物同约定；
+//   - registry — 仓库拉取（生产正路）：凭据走凭据文件，绝不进清单；
+//     本轮只有 schema 与校验，运行时未实现鉴权拉取（会如实报未实现）。
+type ImageSpec struct {
+	Source     string `yaml:"source" json:"source"` // build | local_image | registry
+	Context    string `yaml:"context,omitempty" json:"context,omitempty"`
+	Dockerfile string `yaml:"dockerfile,omitempty" json:"dockerfile,omitempty"`
+	LocalPath  string `yaml:"local_path,omitempty" json:"local_path,omitempty"`
+	Repo       string `yaml:"repo,omitempty" json:"repo,omitempty"`
+	Tag        string `yaml:"tag,omitempty" json:"tag,omitempty"` // 支持 {service_version} 占位
+}
+
+// VolumeSpec 是一条卷映射：宿主侧 <容器根>/<HostRelative> → 容器内 Container。
+// 卷在镜像之外，版本升级（换镜像）不触碰——与裸金属 shared_data 同语义。
+type VolumeSpec struct {
+	Container    string `yaml:"container" json:"container"`
+	HostRelative string `yaml:"host_relative" json:"host_relative"`
 }
 
 // IsExternal 报告该清单是否为外部依赖（无进程、只做可达性检查）。
@@ -221,6 +257,7 @@ func (m *Manifest) IsExternal() bool {
 }
 
 // LoadFile 读取并解析单个清单文件（不做跨清单校验）。
+// 装载即拦截疑似凭据：注释与约定拦不住人，这里做代码级兜底。
 func LoadFile(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -231,11 +268,73 @@ func LoadFile(path string) (*Manifest, error) {
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+
+	var raw map[string]interface{}
+	if err := yaml.Unmarshal(data, &raw); err == nil {
+		if hits := scanCredentials("", raw); len(hits) > 0 {
+			return nil, fmt.Errorf("%s: 清单疑似含凭据（凭据值绝不进清单，走凭据文件与 ${secret:<name>} 引用）: %s",
+				path, strings.Join(hits, "; "))
+		}
+	}
+
 	if m.Kind == "" {
 		m.Kind = "service"
 	}
 	m.SourcePath = path
 	return &m, nil
+}
+
+var (
+	// credentialKeyRe 命中即视为凭据类键名：其字面值必须只是 ${secret:<name>} 引用。
+	credentialKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[_-]?key|credential|private[_-]?key|access[_-]?key)`)
+	// credentialValueRes 是常见凭据形态的值特征（与键名无关，全文扫描）。
+	credentialValueRes = []*regexp.Regexp{
+		regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),
+		regexp.MustCompile(`\b(ghp|gho|ghs|ghu|github_pat)_[A-Za-z0-9]{16,}\b`), // GitHub 令牌族
+		regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),                               // AWS access key
+		regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`), // JWT
+		regexp.MustCompile(`^[0-9a-fA-F]{48,}$`),        // 长十六进制串
+		regexp.MustCompile(`^[A-Za-z0-9+]{48,}={0,2}$`), // 长 base64 串
+	}
+	credentialSecretRefRe = regexp.MustCompile(`^\$\{secret:[A-Za-z0-9_-]+\}$`)
+	credentialBraceRe     = regexp.MustCompile(`\$\{[^}]*\}`)
+)
+
+// scanCredentials 递归扫描清单原始结构，返回疑似凭据的位置说明。
+// 规则：凭据类键名带字面值（非 ${secret:...} 引用）报错；任意位置的
+// 值命中常见凭据形态报错；任何 ${...} 占位必须是完整 ${secret:<name>}。
+func scanCredentials(prefix string, node interface{}) []string {
+	var hits []string
+	switch v := node.(type) {
+	case map[string]interface{}:
+		for k, child := range v {
+			key := k
+			if prefix != "" {
+				key = prefix + "." + k
+			}
+			if s, ok := child.(string); ok && credentialKeyRe.MatchString(k) && s != "" && !credentialSecretRefRe.MatchString(s) {
+				hits = append(hits, key+" 为凭据类键名且带字面值")
+			}
+			hits = append(hits, scanCredentials(key, child)...)
+		}
+	case []interface{}:
+		for i, child := range v {
+			hits = append(hits, scanCredentials(fmt.Sprintf("%s[%d]", prefix, i), child)...)
+		}
+	case string:
+		for _, re := range credentialValueRes {
+			if re.MatchString(v) {
+				hits = append(hits, prefix+" 值形似凭据")
+				break
+			}
+		}
+		for _, tok := range credentialBraceRe.FindAllString(v, -1) {
+			if !credentialSecretRefRe.MatchString(tok) {
+				hits = append(hits, prefix+" 含非法占位符 "+tok+"（只允许 ${secret:<name>}）")
+			}
+		}
+	}
+	return hits
 }
 
 // excludedRepoDirs 是扫描时默认排除的候选目录名：构建产物与临时目录。

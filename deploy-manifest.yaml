@@ -7,6 +7,9 @@ display_name: HA-Services-Deployer
 group: ops
 # 未知：仓库无版本 tag，代码与配置均无服务版本字段。
 service_version: "unknown"
+# 执行形态选择器：生产维持裸金属（aapanel 管理）；隔离环境经
+# overrides.<p>.runtime: container 切到容器形态（见 container 段）。
+runtime: baremetal
 
 facts:
   ports:
@@ -76,4 +79,16 @@ baremetal:
     local_path: "unknown"
 
 container:
-  enabled: false
+  # 容器形态（2026-11-08 起启用；镜像即版本：<project>:<service_version>）。
+  image:
+    # 本地构建：scratch 单二进制，零 registry 依赖（离线可跑）。
+    # 构建前须把静态二进制放入上下文：
+    #   CGO_ENABLED=0 go build -trimpath -o deploy/docker/hasd .
+    source: build
+    context: deploy/docker
+    dockerfile: Dockerfile
+  volumes:
+    # 数据面（config.yaml / manifest.json / artifacts）在镜像之外，
+    # 换镜像升级不触碰——与裸金属 shared_data 同语义。
+    - container: /data
+      host_relative: data
