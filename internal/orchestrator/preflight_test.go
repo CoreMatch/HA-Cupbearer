@@ -672,6 +672,98 @@ func TestPreflightReportsAllFailuresAtOnce(t *testing.T) {
 	}
 }
 
+// 重名清单（并行 worktree 副本）不得瘫痪部署链路：
+// 取装载顺序第一个，警告列全路径，运行照常。
+func TestDuplicateManifestsWarnButRunProceeds(t *testing.T) {
+	env := newPreflightEnv(t)
+	// 造一个与 svc-a 同项目名的 worktree 副本（同根内目录名排序在后）。
+	src := filepath.Join(env.scanRoot, "svc-a", "deploy-manifest.yaml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dupPath := filepath.Join(env.scanRoot, "svc-a-worktree", "deploy-manifest.yaml")
+	if err := os.MkdirAll(filepath.Dir(dupPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dupPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ms, rep := env.orch.Load()
+	if !rep.OK() {
+		t.Fatalf("duplicate must not block validation: %v", rep.Errors)
+	}
+	count := 0
+	for _, m := range ms {
+		if m.Project == "svc-a" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("effective list must keep exactly one svc-a, got %d", count)
+	}
+
+	// 警告必须列全重名涉及的所有路径。
+	var warn string
+	for _, w := range rep.Warnings {
+		if strings.Contains(w, `"svc-a"`) {
+			warn = w
+		}
+	}
+	if warn == "" {
+		t.Fatalf("missing duplicate warning: %+v", rep.Warnings)
+	}
+	if !strings.Contains(warn, filepath.Join("svc-a", "deploy-manifest.yaml")) ||
+		!strings.Contains(warn, filepath.Join("svc-a-worktree", "deploy-manifest.yaml")) {
+		t.Errorf("warning must list every path involved: %s", warn)
+	}
+
+	// 运行不被拒绝（等待运行结束，避免执行协程与测试清理竞态）。
+	snap, err := env.orch.StartRun(RunOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("run must proceed despite duplicate manifests: %v", err)
+	}
+	run := waitForRunFile(t, env.orch, snap.ID)
+	if res, ok := run.Results["svc-a"]; !ok || res.Outcome != OutcomeDryRun {
+		t.Fatalf("svc-a dry-run outcome missing: %+v", run.Results)
+	}
+}
+
+// strict_project_names 开启时重名即失败：校验不过、运行被拒。
+func TestStrictProjectNamesRefusesRun(t *testing.T) {
+	env := newPreflightEnv(t, func(cfg *models.Config, creds *config.Credentials, stub *tinyvisorStub) {
+		cfg.Orchestration.StrictProjectNames = true
+	})
+	src := filepath.Join(env.scanRoot, "svc-a", "deploy-manifest.yaml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dupPath := filepath.Join(env.scanRoot, "svc-a-worktree", "deploy-manifest.yaml")
+	if err := os.MkdirAll(filepath.Dir(dupPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dupPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, rep := env.orch.Load()
+	if rep.OK() {
+		t.Fatal("strict mode must treat duplicate project names as failure")
+	}
+	joined := strings.Join(rep.Errors, "\n")
+	if !strings.Contains(joined, `"svc-a"`) || !strings.Contains(joined, "strict_project_names") {
+		t.Errorf("strict duplicate error must name the project and the switch: %v", rep.Errors)
+	}
+
+	_, err = env.orch.StartRun(RunOptions{DryRun: true})
+	var verr *ErrValidation
+	if !errors.As(err, &verr) {
+		t.Fatalf("strict duplicate must refuse the run with ErrValidation, got %v", err)
+	}
+}
+
 func TestStartRunRefusedOnPreflightBlockers(t *testing.T) {
 	env := newPreflightEnv(t)
 	occ, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(env.svcPort))

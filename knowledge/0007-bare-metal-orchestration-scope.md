@@ -26,9 +26,22 @@ Schema v1 splits runtime-agnostic `facts` (ports, health, depends_on, group,
 data dirs, migration mode) from runtime-specific `baremetal` /
 `container` execution blocks; `container.enabled` must be false (frozen for
 the later Docker phase). Loader + validator: `internal/manifest/`
-(schema, duplicate project, dependency existence, dependency cycle,
-cross-project port conflict, enum checks). Foreign projects
-(`manager != tinyvisor`) may record `"unknown"` for informational fields.
+(schema, dependency existence, dependency cycle, cross-project port
+conflict, enum checks). Foreign projects (`manager != tinyvisor`) may
+record `"unknown"` for informational fields.
+
+**Duplicate project names are resolved, not fatal.** Parallel worktrees and
+extra checkouts carry manifest copies into the scan roots; refusing to run
+on a duplicate would take the whole deploy chain down whenever someone
+opens a branch (measured 2026-11-08). Rules (`internal/manifest/manifest.go::LoadAggregate`):
+hidden dirs (`.trae`, `.git`, …) and obvious artifact/temp dirs
+(`build`, `dist`, `out`, `target`, `tmp`, `temp`, `node_modules`,
+`vendor`) are never scanned; among the rest, the first manifest in load
+order wins — `scan_roots` configuration order, then directory-name order
+within a root, then the external manifest dir — and every ignored copy is
+reported with its full path as a **warning** (runs proceed). Strict mode
+(`orchestration.strict_project_names: true`, default off) escalates
+duplicates to errors for contexts that want fail-fast.
 
 **Execution semantics** (`internal/orchestrator/`):
 

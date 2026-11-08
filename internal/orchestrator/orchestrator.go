@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -123,9 +124,24 @@ func New(cfg *models.Config, creds *config.Credentials) *Orchestrator {
 }
 
 // Load 装载并聚合校验全部清单。
+//
+// 重名清单由装载层按确定性规则取舍（scan_roots 配置顺序在先者胜，
+// 见 manifest.LoadAggregate），默认记警告、不阻断运行——并行 worktree
+// 或检出副本造成重名是常态，硬阻断会让"开个分支干活"瘫痪整条部署
+// 链路。配置 strict_project_names 时才把重名升为错误（重名即失败）。
 func (o *Orchestrator) Load() ([]*manifest.Manifest, *manifest.Report) {
-	ms, errs := manifest.LoadAggregate(o.cfg.Orchestration.ScanRoots, o.cfg.Orchestration.ExternalManifests)
-	return ms, manifest.ValidateAggregate(ms, errs)
+	ms, dups, errs := manifest.LoadAggregate(o.cfg.Orchestration.ScanRoots, o.cfg.Orchestration.ExternalManifests)
+	rep := manifest.ValidateAggregate(ms, errs)
+	for _, d := range dups {
+		msg := fmt.Sprintf("项目 %q 清单重名：采用 %s，忽略 %s",
+			d.Project, d.Kept, strings.Join(d.Ignored, ", "))
+		if o.cfg.Orchestration.StrictProjectNames {
+			rep.AddError(msg + "（strict_project_names 开启，重名即失败）")
+		} else {
+			rep.AddWarning(msg)
+		}
+	}
+	return ms, rep
 }
 
 func indexByProject(ms []*manifest.Manifest) map[string]*manifest.Manifest {

@@ -109,8 +109,9 @@ func (h *Handler) GetDeployValidate(c *gin.Context) {
 		"success": true,
 		"message": "validation executed",
 		"data": gin.H{
-			"ok":     rep.OK(),
-			"errors": rep.Errors,
+			"ok":       rep.OK(),
+			"errors":   rep.Errors,
+			"warnings": rep.Warnings,
 		},
 	})
 }

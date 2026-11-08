@@ -40,6 +40,9 @@ type OrchestrationConfig struct {
 	// 把 manager 覆盖为 tinyvisor、install_root 指向本地目录）。
 	// 生产上下文不做任何覆盖。
 	Overrides map[string]ProjectOverride `yaml:"overrides" json:"overrides"`
+	// StrictProjectNames 为 true 时项目清单重名按校验失败处理（拒绝运行）；
+	// 默认 false：重名按装载顺序取第一个并记警告（并行 worktree 常态）。
+	StrictProjectNames bool `yaml:"strict_project_names" json:"strict_project_names"`
 }
 
 type TinyvisorTargetConfig struct {

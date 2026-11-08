@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 )
@@ -217,12 +218,63 @@ func LoadFile(path string) (*Manifest, error) {
 	return &m, nil
 }
 
-// LoadAggregate 从扫描根与外部清单目录装载全部清单。
+// excludedRepoDirs 是扫描时默认排除的候选目录名：构建产物与临时目录。
+// 隐藏目录（以 . 开头，含 .trae/.git 及其 worktrees）另行按前缀排除。
+// 排除只是第一道筛子；真正的兜底是重名确定性取舍（见 LoadAggregate）——
+// 部署链路不得依赖"目录里恰好没有干扰副本"。
+var excludedRepoDirs = map[string]bool{
+	"build": true, "dist": true, "out": true, "target": true,
+	"tmp": true, "temp": true, "node_modules": true, "vendor": true,
+}
+
+// DuplicateGroup 记录同一项目名出现多份清单时的取舍结果。
+type DuplicateGroup struct {
+	Project string   `json:"project"`
+	Kept    string   `json:"kept"`    // 取胜清单的 SourcePath
+	Ignored []string `json:"ignored"` // 被忽略副本的 SourcePath（按装载顺序）
+}
+
+// LoadAggregate 从扫描根与外部清单目录装载清单，并按确定性规则解决重名。
 // scanRoots 下按 <root>/<repo>/deploy-manifest.yaml 规则查找；
-// externalDir 下装载全部 *.yaml。返回装载成功列表与逐项装载错误。
-func LoadAggregate(scanRoots []string, externalDir string) ([]*Manifest, []error) {
+// externalDir 下装载全部 *.yaml。
+//
+// 重名取舍规则（确定性，不依赖目录现场）：
+//  1. 装载顺序 = scan_roots 配置顺序（同一根内按目录名排序）→ 外部清单目录；
+//  2. 同名项目先装载者取胜，其余副本不进生效列表，记入 DuplicateGroup；
+//  3. 隐藏目录与 excludedRepoDirs 中的目录不作为仓库候选。
+//
+// 重名本身不是错误：并行 worktree、检出副本都会造成重名，硬阻断会让
+// "开个分支干活"瘫痪整条部署链路。需要严格语义（重名即失败）时，由
+// 调用方依据返回的 DuplicateGroup 拒绝（编排器 strict_project_names 开关）。
+// 返回去重后的生效清单、重名取舍记录与逐项装载错误。
+func LoadAggregate(scanRoots []string, externalDir string) ([]*Manifest, []DuplicateGroup, []error) {
 	var manifests []*Manifest
+	var dups []DuplicateGroup
 	var errs []error
+	keptIdx := make(map[string]int)  // project -> 取胜者在 manifests 的下标
+	groupIdx := make(map[string]int) // project -> dups 下标
+
+	register := func(m *Manifest) {
+		if m.Project == "" {
+			manifests = append(manifests, m) // 空项目名由校验报错
+			return
+		}
+		if _, seen := keptIdx[m.Project]; !seen {
+			keptIdx[m.Project] = len(manifests)
+			manifests = append(manifests, m)
+			return
+		}
+		gi, ok := groupIdx[m.Project]
+		if !ok {
+			dups = append(dups, DuplicateGroup{
+				Project: m.Project,
+				Kept:    manifests[keptIdx[m.Project]].SourcePath,
+			})
+			gi = len(dups) - 1
+			groupIdx[m.Project] = gi
+		}
+		dups[gi].Ignored = append(dups[gi].Ignored, m.SourcePath)
+	}
 
 	for _, root := range scanRoots {
 		entries, err := os.ReadDir(root)
@@ -234,6 +286,9 @@ func LoadAggregate(scanRoots []string, externalDir string) ([]*Manifest, []error
 			if !e.IsDir() {
 				continue
 			}
+			if name := e.Name(); strings.HasPrefix(name, ".") || excludedRepoDirs[name] {
+				continue
+			}
 			path := filepath.Join(root, e.Name(), FileName)
 			if _, err := os.Stat(path); err != nil {
 				continue
@@ -243,7 +298,7 @@ func LoadAggregate(scanRoots []string, externalDir string) ([]*Manifest, []error
 				errs = append(errs, err)
 				continue
 			}
-			manifests = append(manifests, m)
+			register(m)
 		}
 	}
 
@@ -260,9 +315,9 @@ func LoadAggregate(scanRoots []string, externalDir string) ([]*Manifest, []error
 				errs = append(errs, err)
 				continue
 			}
-			manifests = append(manifests, m)
+			register(m)
 		}
 	}
 
-	return manifests, errs
+	return manifests, dups, errs
 }
