@@ -90,6 +90,11 @@ type SmokeCheck struct {
 
 // SmokeAssert 是响应体断言（三个开关可组合）。
 type SmokeAssert struct {
+	// ExpectContentType 要求响应 Content-Type 的媒体类型与之相等
+	//（忽略 ;charset 等参数，大小写不敏感）。用途：SPA 静态回退会对
+	// 未知路径一律回 200 + text/html，伪造出"服务活着"的假象；
+	// content-type 断言让冒烟能区分真实 JSON 端点与静态回退。
+	ExpectContentType string `yaml:"expect_content_type,omitempty" json:"expect_content_type,omitempty"`
 	// Contains 要求响应体包含该子串。
 	Contains string `yaml:"contains,omitempty" json:"contains,omitempty"`
 	// JSONField 要求响应为 JSON 且点路径字段存在（如 data.version）。

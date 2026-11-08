@@ -162,6 +162,61 @@ func TestSmokeBodyNotJSON(t *testing.T) {
 	}
 }
 
+// SPA 静态回退场景：未知路径回 200 + text/html。状态码是伪造的，
+// content-type 断言必须识破——这比没有冒烟更坏，因为绿勾是假的。
+func TestSmokeContentTypeCatchesSPAFallback(t *testing.T) {
+	srv := newSmokeBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!doctype html><html><body>SPA fallback</body></html>`)
+	})
+	o := newSmokeOrch(t, &config.Credentials{})
+	m := smokeManifest(srv.port, manifest.SmokeCheck{
+		Name: "session-status", Path: "/api/session", ExpectStatus: 200,
+		Assert: manifest.SmokeAssert{ExpectContentType: "application/json", JSONField: "data.auth_required"},
+	})
+	err := o.runSmoke(context.Background(), m, 0)
+	if err == nil {
+		t.Fatal("SPA fallback (text/html) must not pass a smoke expecting application/json")
+	}
+	if !strings.Contains(err.Error(), "content-type") || !strings.Contains(err.Error(), "text/html") {
+		t.Errorf("error must name the content-type mismatch: %v", err)
+	}
+}
+
+// 真实 JSON 端点：带 charset 参数、大小写差异都应放行。
+func TestSmokeContentTypePassesRealEndpoint(t *testing.T) {
+	srv := newSmokeBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		fmt.Fprint(w, `{"success":true,"message":"session status","data":{"auth_required":false,"authenticated":false}}`)
+	})
+	o := newSmokeOrch(t, &config.Credentials{})
+	m := smokeManifest(srv.port, manifest.SmokeCheck{
+		Name: "session-status", Path: "/api/session", ExpectStatus: 200,
+		Assert: manifest.SmokeAssert{ExpectContentType: "Application/JSON", JSONField: "data.auth_required"},
+	})
+	if err := o.runSmoke(context.Background(), m, 0); err != nil {
+		t.Fatalf("real JSON endpoint must pass: %v", err)
+	}
+}
+
+func TestContentTypeMatches(t *testing.T) {
+	cases := []struct {
+		got, want string
+		ok        bool
+	}{
+		{"application/json", "application/json", true},
+		{"application/json; charset=utf-8", "application/json", true},
+		{"Application/JSON", "application/json", true},
+		{"text/html; charset=utf-8", "application/json", false},
+		{"", "application/json", false},
+	}
+	for _, tc := range cases {
+		if contentTypeMatches(tc.got, tc.want) != tc.ok {
+			t.Errorf("contentTypeMatches(%q, %q) = %v, want %v", tc.got, tc.want, !tc.ok, tc.ok)
+		}
+	}
+}
+
 func TestSmokeTimeout(t *testing.T) {
 	srv := newSmokeBackend(t, func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
