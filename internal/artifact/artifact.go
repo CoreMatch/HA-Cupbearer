@@ -87,7 +87,7 @@ func Stage(ctx context.Context, m *manifest.Manifest, destDir string, githubToke
 
 	switch m.Baremetal.Artifact.Source {
 	case "local_path":
-		err = copyLocal(m.Baremetal.Artifact.LocalPath, tmp)
+		err = copyLocal(m.ResolveLocalPath(), tmp)
 	case "ci_release":
 		url := releaseAssetURL(m, m.EffectiveAsset())
 		err = downloadStream(ctx, url, githubToken, tmp)
@@ -172,7 +172,7 @@ func ensureDiskSpace(dir string, required int64) error {
 func artifactSize(ctx context.Context, m *manifest.Manifest, githubToken string) (int64, bool, error) {
 	switch m.Baremetal.Artifact.Source {
 	case "local_path":
-		info, err := os.Stat(m.Baremetal.Artifact.LocalPath)
+		info, err := os.Stat(m.ResolveLocalPath())
 		if err != nil {
 			return 0, false, fmt.Errorf("stat local artifact: %w", err)
 		}
@@ -231,7 +231,7 @@ func cleanOrphanTempFiles(dir string) {
 func resolveChecksum(ctx context.Context, m *manifest.Manifest, githubToken string) (sha string, source string, err error) {
 	switch m.Baremetal.Artifact.Source {
 	case "local_path":
-		sumPath := m.Baremetal.Artifact.LocalPath + ".sha256"
+		sumPath := m.ResolveLocalPath() + ".sha256"
 		data, err := os.ReadFile(sumPath)
 		if err != nil {
 			return "", sumPath, fmt.Errorf("read checksum file: %w", err)

@@ -177,7 +177,27 @@ type ArtifactSpec struct {
 	//   local_path  — 本机/挂载路径上的产物文件（隔离环境与本地验证）。
 	Source    string      `yaml:"source" json:"source"`
 	Release   ReleaseSpec `yaml:"release" json:"release"`
-	LocalPath string      `yaml:"local_path" json:"local_path"`
+	// LocalPath 是 local_path 来源的产物文件位置。绝对路径按原样使用；
+	// 相对路径相对**清单文件所在目录**（即该仓库的根目录）解析——例如
+	// `build/avalon` 指 <仓库根>/build/avalon。这是单机编排约定：同机
+	// 部署下相对路径足够，且不再把具体机器的绝对布局钉进清单。解析见
+	// (*Manifest).ResolveLocalPath；校验和文件恒为同目录同名 + .sha256。
+	LocalPath string `yaml:"local_path" json:"local_path"`
+}
+
+// ResolveLocalPath 返回 local_path 来源产物的可用路径：绝对路径原样
+// 返回；相对路径相对清单装载来源目录（仓库根）解析，不依赖进程工作
+// 目录。清单非经文件装载（SourcePath 为空）且为相对路径时，退化为
+// 相对进程工作目录（保持历史行为）。
+func (m *Manifest) ResolveLocalPath() string {
+	p := m.Baremetal.Artifact.LocalPath
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	if m.SourcePath == "" {
+		return p
+	}
+	return filepath.Join(filepath.Dir(m.SourcePath), p)
 }
 
 // ReleaseSpec 描述 CI 发布资产位置。资产命名硬约定：
