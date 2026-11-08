@@ -33,8 +33,11 @@ type GlobalState struct {
 type ProjectState struct {
 	Outcome       string    `json:"outcome"`
 	ActiveVersion string    `json:"active_version,omitempty"`
-	Detail        string    `json:"detail,omitempty"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	// ImageID 是容器项目实际运行的镜像内容摘要（sha256:...）：
+	// 回滚的唯一可定位依据；标签只是人类可读的名字，标签会撒谎，摘要不会。
+	ImageID   string    `json:"image_id,omitempty"`
+	Detail    string    `json:"detail,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (s *Store) statePath() string { return filepath.Join(s.dir, "state.json") }
@@ -96,6 +99,7 @@ func (s *Store) RebuildStateFromRuns() (*GlobalState, error) {
 			state.Projects[name] = &ProjectState{
 				Outcome:       string(res.Outcome),
 				ActiveVersion: res.ActiveVersion,
+				ImageID:       res.ActiveImageID,
 				Detail:        res.Detail,
 				UpdatedAt:     ts,
 			}
@@ -150,6 +154,35 @@ func (s *Store) LoadRun(id string) (*Run, error) {
 		return nil, err
 	}
 	return &run, nil
+}
+
+// ImageIDForVersion 返回运行记录中"该项目最近一次以指定版本运行"时记下的
+// 镜像内容摘要；无记录返回空。回滚按此钉死目标：标签可以重打移动，
+// 记录里的摘要是"那个版本当时跑的确实是这份内容"的不可动证据。
+func (s *Store) ImageIDForVersion(project, version string) string {
+	entries, err := os.ReadDir(filepath.Join(s.dir, "runs"))
+	if err != nil {
+		return ""
+	}
+	var runs []*Run
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		run, err := s.LoadRun(e.Name()[:len(e.Name())-len(".json")])
+		if err != nil {
+			continue
+		}
+		runs = append(runs, run)
+	}
+	sort.Slice(runs, func(i, j int) bool { return runs[i].StartedAt.After(runs[j].StartedAt) })
+	for _, run := range runs {
+		res, ok := run.Results[project]
+		if ok && res.ActiveVersion == version && res.ActiveImageID != "" {
+			return res.ActiveImageID
+		}
+	}
+	return ""
 }
 
 // RunSummary 是运行列表的精简视图。

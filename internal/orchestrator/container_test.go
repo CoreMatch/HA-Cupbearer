@@ -30,7 +30,8 @@ type fakeDocker struct {
 	infoErr       error
 	buildErr      error
 	createErr     error
-	images        map[string]string            // ref -> imageID
+	images        map[string]string // ref -> imageID
+	knownDigests  map[string]bool   // 仍存在的镜像摘要（可脱离标签独立存在）
 	containers    map[string]*docker.ContainerState
 	creates       []docker.CreateOptions
 	removes       []string
@@ -41,9 +42,10 @@ type fakeDocker struct {
 
 func newFakeDocker() *fakeDocker {
 	return &fakeDocker{
-		images:     map[string]string{},
-		containers: map[string]*docker.ContainerState{},
-		imageTags:  map[string][]string{},
+		images:       map[string]string{},
+		knownDigests: map[string]bool{},
+		containers:   map[string]*docker.ContainerState{},
+		imageTags:    map[string][]string{},
 	}
 }
 
@@ -52,6 +54,9 @@ func (f *fakeDocker) Info(ctx context.Context) error { return f.infoErr }
 func (f *fakeDocker) ImageExists(ctx context.Context, ref string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if strings.HasPrefix(ref, "sha256:") {
+		return f.knownDigests[ref], nil
+	}
 	_, ok := f.images[ref]
 	return ok, nil
 }
@@ -67,9 +72,27 @@ func (f *fakeDocker) ImageID(ctx context.Context, ref string) (string, error) {
 }
 
 func (f *fakeDocker) addImage(tag string) {
-	f.images[tag] = "sha256:img-" + tag
+	id := "sha256:img-" + tag
+	f.images[tag] = id
+	f.knownDigests[id] = true
 	repo, version, _ := strings.Cut(tag, ":")
 	f.imageTags[repo] = append([]string{version}, f.imageTags[repo]...)
+}
+
+// retag 把标签移到另一份内容上（模拟"同版本重打标签"——标签撒谎）。
+func (f *fakeDocker) retag(tag, imageID string) {
+	f.images[tag] = imageID
+	f.knownDigests[imageID] = true
+}
+
+// forgetImage 模拟镜像被删除：摘要不再存在（连带摘除指向它的标签）。
+func (f *fakeDocker) forgetImage(imageID string) {
+	delete(f.knownDigests, imageID)
+	for t, id := range f.images {
+		if id == imageID {
+			delete(f.images, t)
+		}
+	}
 }
 
 func (f *fakeDocker) Build(ctx context.Context, tag, contextDir, dockerfile string) error {
@@ -97,9 +120,13 @@ func (f *fakeDocker) Create(ctx context.Context, opts docker.CreateOptions) (str
 	}
 	id := fmt.Sprintf("ctr%04d", len(f.creates)+1)
 	f.creates = append(f.creates, opts)
+	imageID := f.images[opts.Image]
+	if imageID == "" && strings.HasPrefix(opts.Image, "sha256:") {
+		imageID = opts.Image // 按摘要定位创建（钉死回滚）
+	}
 	f.containers[opts.Name] = &docker.ContainerState{
 		ID: id, Name: opts.Name, Image: opts.Image,
-		ImageID: f.images[opts.Image], State: "created",
+		ImageID: imageID, State: "created",
 	}
 	return id, nil
 }
@@ -148,7 +175,19 @@ func (f *fakeDocker) ImageTags(ctx context.Context, repo string) ([]string, erro
 func (f *fakeDocker) RemoveImage(ctx context.Context, ref string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	delete(f.images, ref)
+	if id, ok := f.images[ref]; ok {
+		delete(f.images, ref)
+		stillReferenced := false
+		for _, other := range f.images {
+			if other == id {
+				stillReferenced = true
+				break
+			}
+		}
+		if !stillReferenced {
+			delete(f.knownDigests, id)
+		}
+	}
 	f.removedImages = append(f.removedImages, ref)
 	return nil
 }
@@ -307,7 +346,7 @@ func TestContainerDeployAndIdempotentNoRecreate(t *testing.T) {
 	}
 }
 
-// 健康判败 → 自动回滚到切换前的镜像标签；证据为前后容器 ID 与镜像摘要对照。
+// 健康判败 → 自动回滚按切换前的镜像摘要钉死；证据为前后容器 ID 与镜像摘要对照。
 func TestContainerDeployFailureAutoRollback(t *testing.T) {
 	env := newContainerEnv(t)
 
@@ -317,6 +356,9 @@ func TestContainerDeployFailureAutoRollback(t *testing.T) {
 	}
 	v1Container := env.fake.containers["svc-a"].ID
 	v1ImageID := env.fake.images["svc-a:1.0.0"]
+	if run.Results["svc-a"].ActiveImageID != v1ImageID {
+		t.Fatalf("run record must carry the active image digest, got %q", run.Results["svc-a"].ActiveImageID)
+	}
 
 	// 切到坏版本 2.0.0：健康端点转 503。
 	env.cfg.Orchestration.Overrides["svc-a"] = models.ProjectOverride{
@@ -330,8 +372,11 @@ func TestContainerDeployFailureAutoRollback(t *testing.T) {
 	if res2.Outcome != OutcomeFailed {
 		t.Fatalf("bad version must fail, got %s (%s)", res2.Outcome, res2.Detail)
 	}
-	if !strings.Contains(res2.Detail, "auto-rolled back to svc-a:1.0.0") {
-		t.Fatalf("must auto-roll back to previous image tag: %s", res2.Detail)
+	if !strings.Contains(res2.Detail, "auto-rolled back to version 1.0.0") || !strings.Contains(res2.Detail, shortID(v1ImageID)) {
+		t.Fatalf("must auto-roll back pinned by the previous digest: %s", res2.Detail)
+	}
+	if res2.ActiveImageID != v1ImageID {
+		t.Fatalf("run record after auto-rollback must carry the restored digest, got %q", res2.ActiveImageID)
 	}
 
 	// 对照证据：切换前（inspect-before）、坏版本（create）、回滚后（auto-rollback）
@@ -348,20 +393,344 @@ func TestContainerDeployFailureAutoRollback(t *testing.T) {
 	if inspectBefore == nil || !strings.Contains(inspectBefore.Detail, v1Container) || !strings.Contains(inspectBefore.Detail, shortID(v1ImageID)) {
 		t.Fatalf("inspect-before must record pre-switch container ID + image digest: %+v", inspectBefore)
 	}
-	if rollbackStep == nil || !strings.Contains(rollbackStep.Detail, "svc-a:1.0.0") {
-		t.Fatalf("auto-rollback step must record the restored tag: %+v", rollbackStep)
+	if rollbackStep == nil || !strings.Contains(rollbackStep.Detail, shortID(v1ImageID)) {
+		t.Fatalf("auto-rollback step must record the pinned digest: %+v", rollbackStep)
 	}
 
-	// 回滚后运行的必须是 v1 镜像，且容器是新实例（旧的已被替换）。
+	// 回滚必须按摘要定位创建（引用就是摘要本身），内容落回 v1 镜像，
+	// 且容器是新实例（旧的已被替换）。
 	cur := env.fake.containers["svc-a"]
-	if cur.Image != "svc-a:1.0.0" {
-		t.Fatalf("after rollback container runs %s, want svc-a:1.0.0", cur.Image)
+	if cur.Image != v1ImageID {
+		t.Fatalf("rollback must create by digest, got image ref %q want %q", cur.Image, v1ImageID)
+	}
+	if cur.ImageID != v1ImageID {
+		t.Fatalf("after rollback container must run the v1 content, got %s want %s", cur.ImageID, v1ImageID)
 	}
 	if cur.ID == v1Container {
 		t.Fatal("rollback must recreate the container (new ID expected)")
 	}
 	if len(env.fake.creates) != 3 { // v1 + 坏 v2 + 回滚
 		t.Fatalf("expected 3 creates (v1, bad v2, rollback), got %d", len(env.fake.creates))
+	}
+	if got := env.fake.creates[2].Image; got != v1ImageID {
+		t.Fatalf("rollback create must be addressed by digest, got %q", got)
+	}
+}
+
+// 同版本重打标签指向不同内容（标签撒谎）：自动回滚不受影响，
+// 仍落回切换前的那份内容——因为定位依据是摘要，不是标签。
+func TestContainerAutoRollbackUnaffectedByRetag(t *testing.T) {
+	env := newContainerEnv(t)
+
+	run := env.runDeploy(t)
+	if run.Results["svc-a"].Outcome != OutcomeDeployed {
+		t.Fatalf("v1 deploy failed: %+v", run.Results["svc-a"])
+	}
+	goodID := env.fake.images["svc-a:1.0.0"]
+
+	// 重打标签：1.0.0 现在指向另一份内容（模拟同版本重打）。
+	env.fake.retag("svc-a:1.0.0", "sha256:img-evil-content")
+
+	// 部署坏版本 2.0.0：健康判败 → 自动回滚。
+	env.cfg.Orchestration.Overrides["svc-a"] = models.ProjectOverride{
+		HealthPort:     env.cfg.Orchestration.Overrides["svc-a"].HealthPort,
+		ServiceVersion: "2.0.0",
+	}
+	env.setHealthy(false)
+
+	run2 := env.runDeploy(t)
+	res2 := run2.Results["svc-a"]
+	if res2.Outcome != OutcomeFailed {
+		t.Fatalf("bad version must fail, got %s (%s)", res2.Outcome, res2.Detail)
+	}
+
+	// 回滚落点必须是切换前的摘要内容；而标签此刻指向别处——
+	// 两者不同即证明回滚没有走标签。
+	cur := env.fake.containers["svc-a"]
+	if cur.ImageID != goodID {
+		t.Fatalf("rollback must land on the pre-switch content %s, got %s", goodID, cur.ImageID)
+	}
+	if env.fake.images["svc-a:1.0.0"] == goodID {
+		t.Fatal("test setup broken: the tag must point elsewhere after retag")
+	}
+	if cur.Image == "svc-a:1.0.0" {
+		t.Fatal("rollback must not create from the (lying) tag")
+	}
+	if cur.Image != goodID {
+		t.Fatalf("rollback create must be addressed by digest, got %q", cur.Image)
+	}
+}
+
+// 切换前镜像的摘要已不在本机：自动回滚明确拒绝，不退化到任何标签。
+func TestContainerAutoRollbackRefusesWhenDigestGone(t *testing.T) {
+	env := newContainerEnv(t)
+
+	run := env.runDeploy(t)
+	if run.Results["svc-a"].Outcome != OutcomeDeployed {
+		t.Fatalf("v1 deploy failed: %+v", run.Results["svc-a"])
+	}
+	goodID := env.fake.images["svc-a:1.0.0"]
+
+	// 镜像被删（摘要不存在），但标签移向另一份内容——按标签回滚会"成功"落到错处。
+	env.fake.forgetImage(goodID)
+	env.fake.retag("svc-a:1.0.0", "sha256:img-other-content")
+
+	env.cfg.Orchestration.Overrides["svc-a"] = models.ProjectOverride{
+		HealthPort:     env.cfg.Orchestration.Overrides["svc-a"].HealthPort,
+		ServiceVersion: "2.0.0",
+	}
+	env.setHealthy(false)
+
+	createsBefore := len(env.fake.creates)
+	run2 := env.runDeploy(t)
+	res2 := run2.Results["svc-a"]
+	if res2.Outcome != OutcomeFailed {
+		t.Fatalf("bad version must fail, got %s", res2.Outcome)
+	}
+	if !strings.Contains(res2.Detail, "目标镜像已不存在") {
+		t.Fatalf("must explicitly report the missing target image: %s", res2.Detail)
+	}
+	if len(env.fake.creates) != createsBefore+1 { // 只有坏版本那一次 create，没有回滚 create
+		t.Fatalf("no rollback create may happen when the digest is gone, creates=%d", len(env.fake.creates))
+	}
+}
+
+// 一键回滚：目标版本的摘要来自运行记录；镜像已不存在 → 明确拒绝且不建容器。
+func TestContainerOneClickRollbackRefusesWhenDigestGone(t *testing.T) {
+	env := newContainerEnv(t)
+
+	run := env.runDeploy(t) // v1.0.0
+	if run.Results["svc-a"].Outcome != OutcomeDeployed {
+		t.Fatalf("v1 deploy failed: %+v", run.Results["svc-a"])
+	}
+	goodID := env.fake.images["svc-a:1.0.0"]
+
+	// 升到 2.0.0，使 1.0.0 成为可回滚目标。
+	env.cfg.Orchestration.Overrides["svc-a"] = models.ProjectOverride{
+		HealthPort:     env.cfg.Orchestration.Overrides["svc-a"].HealthPort,
+		ServiceVersion: "2.0.0",
+	}
+	if run2 := env.runDeploy(t); run2.Results["svc-a"].Outcome != OutcomeDeployed {
+		t.Fatalf("v2 deploy failed: %+v", run2.Results["svc-a"])
+	}
+
+	// 1.0.0 的镜像被删（摘要不存在，标签移向别处）。
+	env.fake.forgetImage(goodID)
+	env.fake.retag("svc-a:1.0.0", "sha256:img-other-content")
+
+	createsBefore := len(env.fake.creates)
+	_, err := env.orch.Rollback("svc-a", "1.0.0", false)
+	if err == nil || !strings.Contains(err.Error(), "目标镜像已不存在") {
+		t.Fatalf("rollback must be refused with an explicit missing-image error, got: %v", err)
+	}
+	if len(env.fake.creates) != createsBefore {
+		t.Fatal("refused rollback must not create any container")
+	}
+}
+
+// 一键回滚：运行记录中没有目标版本的摘要 → 拒绝，不退化为按标签定位。
+func TestContainerOneClickRollbackRefusesWithoutRecord(t *testing.T) {
+	env := newContainerEnv(t)
+	env.fake.addImage("svc-a:0.9.0") // 有标签、有镜像，但从未部署过（无运行记录）
+
+	if run := env.runDeploy(t); run.Results["svc-a"].Outcome != OutcomeDeployed {
+		t.Fatalf("deploy failed: %+v", run.Results["svc-a"])
+	}
+
+	_, err := env.orch.Rollback("svc-a", "0.9.0", false)
+	if err == nil || !strings.Contains(err.Error(), "运行记录中没有") {
+		t.Fatalf("rollback to an unrecorded version must be refused, got: %v", err)
+	}
+}
+
+// ---------- cascade 连带回滚（双容器项目）----------
+
+type cascadeEnv struct {
+	orch  *Orchestrator
+	fake  *fakeDocker
+	cfg   *models.Config
+	srvA  *httptest.Server
+	srvB  *httptest.Server
+	rootA string
+	rootB string
+}
+
+func newCascadeEnv(t *testing.T) *cascadeEnv {
+	t.Helper()
+	base := t.TempDir()
+	scanRoot := filepath.Join(base, "scan")
+
+	for _, name := range []string{"svc-a", "svc-b"} {
+		repoDir := filepath.Join(scanRoot, name)
+		if err := os.MkdirAll(filepath.Join(repoDir, "build"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repoDir, "build", "Dockerfile"), []byte("FROM scratch\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	env := &cascadeEnv{
+		rootA: filepath.Join(base, "install", "svc-a"),
+		rootB: filepath.Join(base, "install", "svc-b"),
+	}
+	newHealthyServer := func() *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+	}
+	env.srvA = newHealthyServer()
+	env.srvB = newHealthyServer()
+	t.Cleanup(env.srvA.Close)
+	t.Cleanup(env.srvB.Close)
+	portA := env.srvA.Listener.Addr().(*net.TCPAddr).Port
+	portB := env.srvB.Listener.Addr().(*net.TCPAddr).Port
+
+	manifestA := fmt.Sprintf(`
+manifest_version: 1
+project: svc-a
+display_name: Service A
+group: core
+service_version: "1.0.0"
+runtime: container
+facts:
+  ports:
+    - { name: http, port: %d, exposure: loopback }
+  health:
+    http: { port_name: http, path: /healthz, expect_status: 200, timeout_seconds: 2, interval_seconds: 1, retries: 1 }
+baremetal:
+  install: { root: %s }
+container:
+  image: { source: build, context: build }
+`, freePort(t), env.rootA)
+	manifestB := fmt.Sprintf(`
+manifest_version: 1
+project: svc-b
+display_name: Service B
+group: core
+service_version: "1.0.0"
+runtime: container
+facts:
+  ports:
+    - { name: http, port: %d, exposure: loopback }
+  health:
+    http: { port_name: http, path: /healthz, expect_status: 200, timeout_seconds: 2, interval_seconds: 1, retries: 1 }
+  depends_on:
+    - { project: svc-a, kind: required }
+baremetal:
+  install: { root: %s }
+container:
+  image: { source: build, context: build }
+`, freePort(t), env.rootB)
+	if err := os.WriteFile(filepath.Join(scanRoot, "svc-a", "deploy-manifest.yaml"), []byte(manifestA), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scanRoot, "svc-b", "deploy-manifest.yaml"), []byte(manifestB), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &models.Config{}
+	cfg.Orchestration.Enabled = true
+	cfg.Orchestration.ScanRoots = []string{scanRoot}
+	cfg.Orchestration.StateDir = filepath.Join(base, "state")
+	cfg.Orchestration.ProbeHost = "127.0.0.1"
+	cfg.Orchestration.Overrides = map[string]models.ProjectOverride{
+		"svc-a": {HealthPort: portA},
+		"svc-b": {HealthPort: portB},
+	}
+	env.cfg = cfg
+	env.orch = New(cfg, &config.Credentials{})
+	env.fake = newFakeDocker()
+	env.orch.docker = env.fake
+	// 预置运行中的旧实例：健康端点被项目自己占用，端口预检放行。
+	env.fake.containers["svc-a"] = &docker.ContainerState{
+		Name: "svc-a", Image: "svc-a:0.0.1", ImageID: "sha256:img-seed-a",
+		State: "running", Running: true, ID: "seedA001",
+	}
+	env.fake.containers["svc-b"] = &docker.ContainerState{
+		Name: "svc-b", Image: "svc-b:0.0.1", ImageID: "sha256:img-seed-b",
+		State: "running", Running: true, ID: "seedB001",
+	}
+
+	if _, rep := env.orch.Load(); !rep.OK() {
+		t.Fatalf("aggregate validation failed: %v", rep.Errors)
+	}
+	return env
+}
+
+func (e *cascadeEnv) runDeploy(t *testing.T) *Run {
+	t.Helper()
+	snap, err := e.orch.StartRun(RunOptions{})
+	if err != nil {
+		var perr *ErrPreflightBlocked
+		if errors.As(err, &perr) {
+			t.Fatalf("run refused by preflight: %+v", perr.Report.Blockers)
+		}
+		t.Fatalf("run refused: %v", err)
+	}
+	return waitForRunFile(t, e.orch, snap.ID)
+}
+
+// cascade 连带回滚真实现：上游回滚到记录摘要，依赖方按自己当前运行摘要
+// 重建——绝不允许"接受 cascade 参数却只回滚一个"。
+func TestContainerCascadeRollbackRecreatesDependents(t *testing.T) {
+	env := newCascadeEnv(t)
+
+	run := env.runDeploy(t)
+	if run.Results["svc-a"].Outcome != OutcomeDeployed || run.Results["svc-b"].Outcome != OutcomeDeployed {
+		t.Fatalf("initial deploy failed: %+v / %+v", run.Results["svc-a"], run.Results["svc-b"])
+	}
+	imgA1 := env.fake.images["svc-a:1.0.0"]
+	imgB := env.fake.images["svc-b:1.0.0"]
+
+	// 升级上游 svc-a 到 2.0.0；svc-b 幂等不动。
+	env.cfg.Orchestration.Overrides["svc-a"] = models.ProjectOverride{
+		HealthPort:     env.cfg.Orchestration.Overrides["svc-a"].HealthPort,
+		ServiceVersion: "2.0.0",
+	}
+	run2 := env.runDeploy(t)
+	if run2.Results["svc-a"].Outcome != OutcomeDeployed {
+		t.Fatalf("upgrade failed: %+v", run2.Results["svc-a"])
+	}
+	if run2.Results["svc-b"].Outcome != OutcomeUpToDate {
+		t.Fatalf("svc-b must stay untouched on upstream upgrade, got %s", run2.Results["svc-b"].Outcome)
+	}
+	ctrA2 := env.fake.containers["svc-a"].ID
+	ctrB := env.fake.containers["svc-b"].ID
+
+	// 一键回滚 svc-a（不指定版本 → 最近可回滚目标 1.0.0），cascade。
+	snap, err := env.orch.Rollback("svc-a", "", true)
+	if err != nil {
+		t.Fatalf("rollback refused: %v", err)
+	}
+	rb := waitForRunFile(t, env.orch, snap.ID)
+
+	resA := rb.Results["svc-a"]
+	if resA.Outcome != OutcomeRolledBack || resA.ActiveVersion != "1.0.0" || resA.ActiveImageID != imgA1 {
+		t.Fatalf("svc-a rollback result wrong: %+v", resA)
+	}
+	resB := rb.Results["svc-b"]
+	if resB == nil {
+		t.Fatal("cascade must include dependent svc-b in the rollback run")
+	}
+	if resB.Outcome != OutcomeDeployed || resB.ActiveImageID != imgB {
+		t.Fatalf("svc-b cascade result wrong: %+v", resB)
+	}
+
+	// 定位依据：两个容器都必须按摘要创建（引用即摘要），内容各归其位。
+	curA := env.fake.containers["svc-a"]
+	if curA.Image != imgA1 || curA.ImageID != imgA1 {
+		t.Fatalf("svc-a must be recreated on its pinned digest: ref=%s id=%s want %s", curA.Image, curA.ImageID, imgA1)
+	}
+	curB := env.fake.containers["svc-b"]
+	if curB.Image != imgB || curB.ImageID != imgB {
+		t.Fatalf("svc-b must be recreated on its own current digest: ref=%s id=%s want %s", curB.Image, curB.ImageID, imgB)
+	}
+	if curA.ID == ctrA2 {
+		t.Fatal("svc-a container must be recreated (new ID expected)")
+	}
+	if curB.ID == ctrB {
+		t.Fatal("svc-b container must be recreated by cascade (new ID expected)")
 	}
 }
 
