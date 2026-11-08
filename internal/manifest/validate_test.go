@@ -467,3 +467,178 @@ func TestValidateAggregate_BadEnums(t *testing.T) {
 		}
 	}
 }
+
+// ---------- kind=plugin（插件型产物） ----------
+
+// pluginManifestYAML 构造 plugin 段可替换的插件清单（依赖 svc-a 存在）。
+func pluginManifestYAML(pluginBlock string) string {
+	return `
+manifest_version: 1
+kind: plugin
+project: plug-a
+display_name: Plugin A
+group: edge
+service_version: "1.0.0"
+facts:
+  depends_on:
+    - { project: svc-a, kind: required }
+  migration: { mode: none }
+` + pluginBlock
+}
+
+// pluginDepManifest 是插件测试用的被依赖方：与 validManifest 同源，
+// 但去掉了对 mysql 的依赖（插件测试不关心它，避免聚合校验噪音）。
+const pluginDepManifest = `
+manifest_version: 1
+project: svc-a
+display_name: Service A
+group: core
+service_version: "1.2.0"
+facts:
+  ports:
+    - { name: http, port: 2778, exposure: public }
+  health:
+    http: { port_name: http, path: /health, expect_status: 200, timeout_seconds: 3, interval_seconds: 1, retries: 5 }
+baremetal:
+  process:
+    manager: tinyvisor
+  install: { root: /opt/svc-a, layout: releases, binary_name: svc-a, keep_releases: 3 }
+  artifact:
+    source: local_path
+    local_path: /tmp/svc-a-linux-amd64
+`
+
+// validatePluginWithDep 装载插件清单 + 其依赖的 svc-a，返回聚合校验报告。
+func validatePluginWithDep(t *testing.T, pluginYAML string) *Report {
+	t.Helper()
+	dir := t.TempDir()
+	writeManifest(t, dir, "svc-a", pluginDepManifest)
+	writeManifest(t, dir, "plug-a", pluginYAML)
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	if len(errs) != 0 {
+		t.Fatalf("load errors: %v", errs)
+	}
+	return ValidateAggregate(manifests, errs)
+}
+
+func TestValidatePlugin_Valid(t *testing.T) {
+	rep := validatePluginWithDep(t, pluginManifestYAML(`plugin:
+  runtime: velocity-proxy
+  plugins_dir: plugins
+  artifact: { source: local_path, local_path: target/plug-a.jar }
+`))
+	if !rep.OK() {
+		t.Fatalf("valid plugin manifest rejected: %v", rep.Errors)
+	}
+}
+
+func TestValidatePlugin_MissingSection(t *testing.T) {
+	rep := validatePluginWithDep(t, pluginManifestYAML(""))
+	if rep.OK() {
+		t.Fatal("plugin manifest without plugin section must fail")
+	}
+	if !strings.Contains(strings.Join(rep.Errors, "\n"), "plugin 段") {
+		t.Fatalf("error must name the missing plugin section: %v", rep.Errors)
+	}
+}
+
+func TestValidatePlugin_MissingFieldsFailLoudly(t *testing.T) {
+	cases := []struct {
+		name  string
+		block string
+		want  string
+	}{
+		{"missing runtime", `plugin:
+  plugins_dir: plugins
+  artifact: { source: local_path, local_path: target/plug-a.jar }
+`, "plugin.runtime 必填"},
+		{"missing plugins_dir", `plugin:
+  runtime: velocity-proxy
+  artifact: { source: local_path, local_path: target/plug-a.jar }
+`, "plugin.plugins_dir 必填"},
+		{"missing artifact local_path", `plugin:
+  runtime: velocity-proxy
+  plugins_dir: plugins
+  artifact: { source: local_path }
+`, "plugin.artifact.local_path 必填"},
+		{"bad artifact source", `plugin:
+  runtime: velocity-proxy
+  plugins_dir: plugins
+  artifact: { source: scp, local_path: target/plug-a.jar }
+`, "plugin.artifact.source 非法"},
+		{"plugins_dir escapes", `plugin:
+  runtime: velocity-proxy
+  plugins_dir: ../etc
+  artifact: { source: local_path, local_path: target/plug-a.jar }
+`, "plugin.plugins_dir 非法"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rep := validatePluginWithDep(t, pluginManifestYAML(tc.block))
+			if rep.OK() {
+				t.Fatalf("case %s must fail", tc.name)
+			}
+			if !strings.Contains(strings.Join(rep.Errors, "\n"), tc.want) {
+				t.Fatalf("missing %q in errors: %v", tc.want, rep.Errors)
+			}
+		})
+	}
+}
+
+func TestValidatePlugin_RejectsProcessAndContainerRuntime(t *testing.T) {
+	rep := validatePluginWithDep(t, pluginManifestYAML(`runtime: container
+plugin:
+  runtime: velocity-proxy
+  plugins_dir: plugins
+  artifact: { source: local_path, local_path: target/plug-a.jar }
+baremetal:
+  process: { manager: tinyvisor }
+`))
+	joined := strings.Join(rep.Errors, "\n")
+	for _, want := range []string{"不应携带 baremetal.process.manager", "runtime 不能为 container"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing %q in errors: %v", want, rep.Errors)
+		}
+	}
+}
+
+func TestValidatePlugin_ServiceWithPluginSectionRejected(t *testing.T) {
+	rep := validateSingleManifestYAML(t, validManifest+`plugin:
+  runtime: velocity-proxy
+  plugins_dir: plugins
+  artifact: { source: local_path, local_path: target/x.jar }
+`)
+	if rep.OK() {
+		t.Fatal("service manifest with plugin section must fail")
+	}
+	if !strings.Contains(strings.Join(rep.Errors, "\n"), "仅 kind=plugin 清单可声明 plugin 段") {
+		t.Fatalf("unexpected errors: %v", rep.Errors)
+	}
+}
+
+func TestValidatePlugin_TargetProjectMustExist(t *testing.T) {
+	rep := validatePluginWithDep(t, pluginManifestYAML(`plugin:
+  runtime: velocity-proxy
+  target_project: no-such-project
+  plugins_dir: plugins
+  artifact: { source: local_path, local_path: target/plug-a.jar }
+`))
+	if rep.OK() {
+		t.Fatal("plugin.target_project pointing at nothing must fail")
+	}
+	if !strings.Contains(strings.Join(rep.Errors, "\n"), "plugin.target_project \"no-such-project\" 不存在") {
+		t.Fatalf("unexpected errors: %v", rep.Errors)
+	}
+}
+
+func TestValidatePlugin_TargetProjectValid(t *testing.T) {
+	rep := validatePluginWithDep(t, pluginManifestYAML(`plugin:
+  runtime: gameserver-runtime
+  target_project: svc-a
+  plugins_dir: plugins
+  artifact: { source: local_path, local_path: target/plug-a.jar }
+`))
+	if !rep.OK() {
+		t.Fatalf("plugin.target_project at existing project must pass: %v", rep.Errors)
+	}
+}

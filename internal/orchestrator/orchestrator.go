@@ -56,6 +56,7 @@ const (
 	OutcomeFailed    ProjectOutcome = "failed"
 	OutcomeSkipped   ProjectOutcome = "skipped"
 	OutcomeForeign   ProjectOutcome = "foreign"
+	OutcomePlugin    ProjectOutcome = "plugin" // 插件型产物：只登记，不部署
 	OutcomeDryRun    ProjectOutcome = "dry-run"
 )
 
@@ -257,6 +258,9 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 	}
 	if rawM.IsExternal() {
 		return nil, fmt.Errorf("project %q is external, nothing to roll back", project)
+	}
+	if rawM.IsPlugin() {
+		return nil, fmt.Errorf("project %q is a plugin artifact: no version directory or process to roll back", project)
 	}
 	m := o.resolveManifest(rawM)
 	eff := o.effective(m)
@@ -495,6 +499,15 @@ func (o *Orchestrator) executeProject(ctx context.Context, run *Run, raw *manife
 		} else {
 			res.Outcome = OutcomeReachable
 		}
+		return res
+	}
+
+	// 插件型产物：只登记、不部署。插件装进别人的进程，没有自己的版本
+	// 目录与进程，部署流水线对它没有可执行动作；安装由目标运行时一侧
+	// 完成（阶段未设）。依赖隔离照常生效（上面已处理）。
+	if m.IsPlugin() {
+		res.Outcome = OutcomePlugin
+		res.Detail = pluginDetail(m)
 		return res
 	}
 
@@ -952,6 +965,14 @@ func (o *Orchestrator) Status(ctx context.Context) (*StatusReport, error) {
 			continue
 		}
 
+		if m.IsPlugin() {
+			// 插件没有自己的进程与健康面：不做探测，只报登记事实。
+			view.Manager = "plugin"
+			view.Detail = pluginDetail(m)
+			report.Projects = append(report.Projects, view)
+			continue
+		}
+
 		eff := o.effective(m)
 		if eff.runtime == "container" {
 			view.Manager = "container"
@@ -1025,6 +1046,19 @@ func shortSHA(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// pluginDetail 是插件条目在执行记录与状态报告中的一句话描述。
+func pluginDetail(m *manifest.Manifest) string {
+	if m.Plugin == nil {
+		return "plugin artifact (plugin section missing)"
+	}
+	target := m.Plugin.Runtime
+	if m.Plugin.TargetProject != "" {
+		target = m.Plugin.TargetProject + " (" + m.Plugin.Runtime + ")"
+	}
+	return fmt.Sprintf("plugin artifact: install target %s, plugins dir %s/; 编排器只登记不部署插件型产物（阶段未设）",
+		target, m.Plugin.PluginsDir)
 }
 
 func orNone(s string) string {

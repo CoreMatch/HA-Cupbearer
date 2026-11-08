@@ -31,7 +31,7 @@ const SchemaVersion = 1
 // Manifest 是一个项目的完整部署声明。
 type Manifest struct {
 	ManifestVersion int       `yaml:"manifest_version" json:"manifest_version"`
-	Kind            string    `yaml:"kind" json:"kind"` // service | external
+	Kind            string    `yaml:"kind" json:"kind"` // service | external | plugin
 	Project         string    `yaml:"project" json:"project"`
 	DisplayName     string    `yaml:"display_name" json:"display_name"`
 	Group           string    `yaml:"group" json:"group"`
@@ -44,6 +44,9 @@ type Manifest struct {
 	Facts      Facts     `yaml:"facts" json:"facts"`
 	Baremetal  Baremetal `yaml:"baremetal" json:"baremetal"`
 	Container  Container `yaml:"container" json:"container"`
+	// Plugin 仅 kind=plugin 清单使用：插件型产物（装进别人进程的 jar 一类）
+	// 与它的安装目标。编排器当前只登记与校验这类条目，不执行安装。
+	Plugin *PluginSpec `yaml:"plugin,omitempty" json:"plugin,omitempty"`
 
 	// SourcePath 记录装载来源（校验报告用），不参与序列化。
 	SourcePath string `yaml:"-" json:"source_path"`
@@ -256,9 +259,33 @@ type VolumeSpec struct {
 	HostRelative string `yaml:"host_relative" json:"host_relative"`
 }
 
+// PluginSpec 描述插件型产物（装进别人进程的东西，如 Velocity/Bukkit 插件
+// jar）与它的安装目标。与 service 的本质区别：插件没有自己的进程与端口，
+// 因此不声明 facts.health/ports，也不走版本目录+软链的部署流水线——
+// 本阶段编排器只登记与校验这类条目，安装仍由目标运行时一侧完成。
+type PluginSpec struct {
+	// Runtime 为承载插件的目标运行时（自由描述，如 "velocity-proxy"、
+	// "bukkit-server"）。目标运行时当前不在编排体系内时这是唯一表达。
+	Runtime string `yaml:"runtime" json:"runtime"`
+	// TargetProject 可选：目标运行时本身是编排体系内的项目时填其项目名
+	//（必须在聚合清单中存在）；目标不在体系内（如生态外的 Velocity 代理、
+	// 第三方 MC 服务器）时留空，只以 Runtime 描述。
+	TargetProject string `yaml:"target_project,omitempty" json:"target_project,omitempty"`
+	// PluginsDir 为插件产物放入的目录（相对目标运行时的工作目录，如 "plugins"）。
+	PluginsDir string `yaml:"plugins_dir" json:"plugins_dir"`
+	// Artifact 为插件产物本身（jar 等）。与裸金属产物同约定：
+	// local_path 来源要求同名 .sha256 旁路随产物一起交付。
+	Artifact ArtifactSpec `yaml:"artifact" json:"artifact"`
+}
+
 // IsExternal 报告该清单是否为外部依赖（无进程、只做可达性检查）。
 func (m *Manifest) IsExternal() bool {
 	return m.Kind == "external"
+}
+
+// IsPlugin 报告该清单是否为插件型产物（装进别人进程、无自身健康面）。
+func (m *Manifest) IsPlugin() bool {
+	return m.Kind == "plugin"
 }
 
 // LoadFile 读取并解析单个清单文件（不做跨清单校验）。

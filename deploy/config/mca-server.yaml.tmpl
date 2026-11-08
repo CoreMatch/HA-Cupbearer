@@ -65,10 +65,26 @@ matchmaking:
   # 房间预占 TTL（秒，config 1.11.0+）：成局时对房间预占的保留时长。
   room_reservation_ttl_seconds: 900
   # 子服→房间静态清单（config 1.11.0+，可选）：整体不配置 = 不启用房间层，
-  # 保持 1.9.x 行为。启用时每个子服必须至少一个房间（见 config 校验）。
-  # 成局后下发给客户端的游戏服务器地址（交接链路用）。host 留空
-  # （默认）视为未配置：成局响应不携带该字段，客户端回落本地配置。
-  # 由 .env 的 MCA_JOIN_TARGET_HOST / MCA_JOIN_TARGET_PORT 注入。
+  # 保持 1.9.x 行为；显式空清单（servers: []）会被配置校验拒绝。
+  # 启用后成局时对房间做预占，成局记录的 join_target 携带绑定子服的地址
+  # （代理路由插件 VelocityGate 即按该地址把玩家送进对应子服）。
+  # 填法示例（把整段取消注释并换成真实值；子服名/房间名不得重复，
+  # host 必填、port 1-65535，每个子服至少一个房间，capacity 为正）：
+  #
+  # servers:
+  #   - name: "bw-sub-1"                 # 子服名（成局记录与运维引用用）
+  #     host: "game-sub-1.internal.example"   # 子服地址：只对代理可达，不暴露公网
+  #     port: 25565
+  #     rooms:
+  #       - name: "bw-room-1"            # 房间名（子服内唯一）
+  #         capacity: 8                  # 房间容量（正整数）
+  #
+  # 成局后下发给客户端的游戏服务器地址（交接链路用）。这是无房间层
+  # （未配置 servers）时成局记录携带的全局地址；启用房间层后成局记录
+  # 改携绑定子服的地址，本段仅在预占失效回落时使用。host 留空（默认）
+  # 视为未配置：成局响应不携带该字段，客户端回落本地配置。
+  # 由 .env 的 MCA_JOIN_TARGET_HOST / MCA_JOIN_TARGET_PORT 注入；
+  # 接入 VelocityGate 且启用房间层时两者保持空/0 即可。
   join_target:
     host: "${MCA_JOIN_TARGET_HOST}"
     port: ${MCA_JOIN_TARGET_PORT}

@@ -162,6 +162,12 @@ func (o *Orchestrator) preflightScope(ctx context.Context, ms []*manifest.Manife
 			o.checkExternalSelf(ctx, m, report)
 			continue
 		}
+		if m.IsPlugin() {
+			// 插件型产物：只登记不部署，本阶段没有任何写入动作，
+			// 也就没有可检查的写入面；如实报登记结论即可。
+			report.add(CheckResult{Project: m.Project, Name: "plugin", OK: true, Detail: pluginDetail(m)})
+			continue
+		}
 		eff := o.effective(m)
 		if eff.runtime == "container" {
 			if mode == "deploy" {
