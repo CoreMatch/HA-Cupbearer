@@ -104,10 +104,11 @@ every template comment was checked against current code facts.
 - Reconciliation batch: merge `d294fdc` (this repository), HASkinLib `e43a58b`,
   HRPAuth `f633104`, HRPAuth-Yggdrasil-API `481e972`.
 - Read-site citations per service are recorded in the batch work papers
-  (agent reconciliation reports, 2026-11-08); key anchors: HRPAuth
-  config/config.go:177 (ConfigVersion 15), MatchCoreArena-Server
-  config/config.go:30 (1.9.0), WinnerProxy config/config.go:188 (v2),
-  HASkinLib config/config.go:69 (v7), HA-WebUI-SDKHandler
-  internal/config/config.go:16 (v4), HA-Services-Deployer
-  internal/config/migrations.go:11 (v2), HA-Services-MaintenanceView
-  internal/config/migrations.go:11 (v1).
+  (agent reconciliation reports, 2026-11-08); key anchors: [xref] HRPAuth
+  [xref] config/config.go:177 (ConfigVersion 15), MatchCoreArena-Server
+  [xref] config/config.go:30 (1.9.0), WinnerProxy config/config.go:188 (v2),
+  [xref] HASkinLib config/config.go:69 (v7), HA-WebUI-SDKHandler
+  [xref] internal/config/config.go:16 (v4), HA-Services-MaintenanceView
+  [xref] internal/config/migrations.go:11 (v1).
+- This repository's own config-version anchor (locally verified):
+  internal/config/migrations.go:11 (v2).
