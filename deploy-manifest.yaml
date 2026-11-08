@@ -55,11 +55,11 @@ facts:
     - ./data
   config:
     # main.go config.Load("config.yaml")。
-    # 模板版本 = 模板首行 version: "1"。漂移记录：代码 ConfigVersion 已为 "2"
-    # （internal/config/migrations.go，v1→v2 仅补 orchestration 零值段），
-    # 装载时自动迁移，模板尚未同步。
+    # 模板版本 = 模板首行 version: "2"（代码 ConfigVersion 同为 "2"，
+    # internal/config/migrations.go v1→v2 补 orchestration 零值段；
+    # 模板已同步至 "2"，无漂移）。
     - path: config.yaml
-      template_version: "1"
+      template_version: "2"
   static_assets: ""
 
 baremetal:
