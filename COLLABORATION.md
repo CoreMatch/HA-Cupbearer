@@ -31,6 +31,27 @@ in progress. Always `git add <explicit paths>` for your own change set.
 uncommitted changes, either wait, or isolate your work (separate worktree, or
 strictly path-scoped staging) and never commit their files.
 
+## Rule 4 — `git rm --cached` can still cost you the working-tree file
+
+Untracking a file is **not** guaranteed to be index-only. When the untracked
+file has a same-content sibling (e.g. you copied `config.yaml` to
+`config.yaml.example` first), the later `git merge` applies **rename
+detection** and physically moves/deletes the on-disk file while reconciling
+the working tree — the file you meant to keep is gone after the merge.
+Symlinks are deleted the same way.
+
+Procedure whenever you untrack something that must stay on disk:
+
+```sh
+git rm --cached <path>        # stage the untrack
+# ... commit, merge, push ...
+ls -la <path>                 # IMMEDIATELY verify the file is still on disk
+```
+
+If it is missing, restore it at once from the tracked template
+(`cp <path>.example <path>`) — a running instance may depend on it. Do not
+consider an untrack done until the on-disk file has been re-verified.
+
 ## Incident record — 2026-11-08: merge swept a parallel session's staged WIP
 
 Merge `d261c0f` ("Merge branch 'docs/template-reconciliation'") unintentionally
@@ -52,3 +73,22 @@ docs merge: `internal/orchestrator/smoke.go` + `smoke_test.go`,
   before continuing.
 - Root cause: the parallel session had staged its files; the docs merge then
   committed the index (Rule 1).
+
+## Incident record — 2026-11-08: untrack-by-`rm --cached` still moved working-tree files
+
+Second "thought it was index-only, actually touched the working tree" case.
+While converting tracked configs to `.example` mode in sibling repos
+(HRPAuth-Yggdrasil-API `config.yaml`, MatchCoreArena-Server
+`config/tokens.yaml`) and untracking absolute-path symlinks (HASkinLib,
+MatchCoreArena-MaintenanceView), each `git rm --cached` was staged and
+committed correctly — but the subsequent `--no-ff` merge applied rename
+detection (file vs its just-added `.example` copy) and **physically
+moved/deleted the on-disk files** the instances depend on.
+
+- Caught and recovered the same day: files restored from their `.example`
+  twins (byte-identical content), running instances unaffected; symlinks
+  recreated with their original targets.
+- Root cause: merge-time rename detection reconciles the working tree, not
+  just the index (Rule 4).
+- Countermeasure: Rule 4 — verify the on-disk file immediately after any
+  untrack-and-merge, restore from `.example` at once if missing.
