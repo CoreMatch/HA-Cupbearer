@@ -160,14 +160,46 @@ Unit coverage in `internal/orchestrator/container_test.go`: retag
 unaffected, digest-gone refusals (auto + one-click), unrecorded-version
 refusal, two-container cascade recreate.
 
+## Follow-up hardening (same day) — reproducible builds + smoke vs SPA fallback
+
+The digest/cascade drills surfaced two pre-existing problems; both were
+closed the same day with measured evidence.
+
+1. **Image builds made reproducible** (acceptance: same input, two
+   consecutive builds, identical digest). Root cause located by controlled
+   experiments (docker 29.7.2 / buildx 0.37.1): layer content and the
+   `Created` field are already deterministic; the **only** non-determinism
+   source was BuildKit's default provenance/attestation manifests, which
+   carry build timestamps. Fix in `internal/docker/docker.go::CLI.Build`:
+   `--provenance=false --sbom=false` + `SOURCE_DATE_EPOCH=0` (clamps
+   in-layer file timestamps, so a recompiled-but-byte-identical binary with
+   a fresh mtime still yields the same digest; `go build -trimpath` output
+   verified byte-identical across runs). Measured through the real pipeline:
+   run `20261108-113237` built digest `59ccc314f26f`, immediate re-run
+   `20261108-113350` rebuilt the same input to the **same digest** and
+   judged `up-to-date` — container `3d361ee2ffa6` provably not recreated.
+   Remaining non-reproducible boundary (documented, not fixable here): base
+   image tag drift and real content changes are input changes, not build
+   nondeterminism.
+2. **Smoke can no longer be fooled by the SPA fallback.** The
+   `ha-services-maintenance-view` smoke hit `/api/session`, which the old
+   running binary did not implement — the 200 came from the static SPA
+   fallback (index.html), a forged liveness signal worse than no smoke.
+   Fix: new `SmokeAssert.expect_content_type` (media-type equality,
+   `;charset` parameters ignored, case-insensitive) checked before body
+   assertions; the hasmv manifest now asserts `application/json` +
+   `json_field: data.auth_required` (the fragile `contains` dropped).
+   Measured: hasmv rebuilt from current source and deployed as 1.0.1 (run
+   `20261108-113540`, smoke green against the real endpoint); bad-version
+   drill (run `20261108-113718`) deployed the old binary as 1.0.2 — health
+   passed, smoke failed honestly with `expect content-type
+   "application/json", got "text/html; charset=utf-8"`, auto-rollback
+   restored 1.0.1 (symlink + `/api/session` JSON verified afterwards).
+   Unit coverage: fallback must fail, real endpoint (charset/case) passes.
+
 ## Caveats carried forward
 
 - `registry` source: schema/validation only; pull + auth later.
-- Image builds on the drill host are not byte-reproducible (same inputs →
-  new digest per build), so an idempotent re-deploy after an out-of-band
-  rebuild recreates the container once even when content is functionally
-  identical. Digest comparison is the honest response; reproducibility is a
-  build-pipeline concern, not an orchestrator one.
 - Two CLI bugs were found and fixed during the loop: bare `docker inspect`
   resolves the same-named image (must use `container inspect`), and the
   state field is `.State.Status`, not `.State.State`. Both are documented
@@ -191,4 +223,7 @@ refusal, two-container cascade recreate.
   `20261108-102506.json`; hardening loop `20261108-110259.json` (re-tag
   drill), `20261108-110901.json` (drill-mirror first deploy),
   `20261108-111045.json` (upstream upgrade), `20261108-111230-rb.json`
-  (cascade rollback).
+  (cascade rollback); follow-up `20261108-113237.json` +
+  `20261108-113350.json` (reproducible-build acceptance pair),
+  `20261108-113540.json` (hasmv 1.0.1 real-endpoint smoke green),
+  `20261108-113718.json` (hasmv bad-version drill, content-type refusal).

@@ -112,7 +112,25 @@ func (o *Orchestrator) smokeOne(ctx context.Context, m *manifest.Manifest, chk *
 		return fmt.Errorf("expect status %d, got %d", expect, resp.StatusCode)
 	}
 
+	// content-type 断言先于响应体断言：SPA 静态回退会对未知路径一律
+	// 回 200 + text/html，伪造出"服务活着"的假象——状态码与子串都
+	// 可能被回退糊弄，content-type 是区分真实端点与静态回退的第一道闸。
+	if want := chk.Assert.ExpectContentType; want != "" {
+		if got := resp.Header.Get("Content-Type"); !contentTypeMatches(got, want) {
+			return fmt.Errorf("expect content-type %q, got %q (static/SPA fallback responses are typically text/html — the endpoint likely does not exist in the running binary)", want, got)
+		}
+	}
+
 	return assertSmokeBody(resp.Body, &chk.Assert)
+}
+
+// contentTypeMatches 比较 Content-Type 的媒体类型部分：
+// 忽略 "; charset=..." 等参数，大小写不敏感。
+func contentTypeMatches(got, want string) bool {
+	if i := strings.IndexByte(got, ';'); i >= 0 {
+		got = got[:i]
+	}
+	return strings.EqualFold(strings.TrimSpace(got), strings.TrimSpace(want))
 }
 
 // smokeURL 解析冒烟请求地址：未声明 port_name 时沿用 health 端口；

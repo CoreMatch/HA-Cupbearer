@@ -111,15 +111,23 @@ func DetectHost() string {
 
 func (c *CLI) cmd(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "docker", args...)
+	env := os.Environ()
 	if c.host != "" {
-		cmd.Env = append(os.Environ(), "DOCKER_HOST="+c.host)
+		env = append(env, "DOCKER_HOST="+c.host)
 	}
+	cmd.Env = env
 	return cmd
 }
 
 func (c *CLI) run(ctx context.Context, args ...string) (string, error) {
+	return c.runEnv(ctx, nil, args...)
+}
+
+// runEnv 在继承环境的基础上追加变量后执行 docker 命令。
+func (c *CLI) runEnv(ctx context.Context, extraEnv []string, args ...string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := c.cmd(ctx, args...)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
@@ -160,13 +168,27 @@ func (c *CLI) ImageID(ctx context.Context, ref string) (string, error) {
 	return c.run(ctx, "image", "inspect", "--format", "{{.Id}}", ref)
 }
 
+// Build 构建镜像并打标签。
+//
+// 可复现构建是回滚钉死 digest 的前提：同输入必须产出同摘要。实测定位
+// （docker 29 / buildx 0.37）：层内容与 Created 字段本身确定，唯一的
+// 非确定性来源是 BuildKit 默认附带的 provenance/attestation 清单——
+// 其中携带构建时间戳，每次构建都不同。因此：
+//   - --provenance=false / --sbom=false：不附带 attestation 清单；
+//   - SOURCE_DATE_EPOCH=0：钳制层内文件时间戳与镜像 Created，
+//     输入文件只是 mtime 变化（如二进制重新编译）时摘要也不变。
+//
+// 仍不可复现的边界（如实记录）：基础镜像标签漂移（FROM 指向的标签被
+// 上游重推时内容变化）与构建上下文内容本身的真实变化不在固定之列——
+// 那属于"输入变了"，不是构建不确定。
+// 要求 BuildKit 构建器（docker ≥ 23 默认；legacy builder 不支持这些标志）。
 func (c *CLI) Build(ctx context.Context, tag, contextDir, dockerfile string) error {
-	args := []string{"build", "-t", tag}
+	args := []string{"build", "-t", tag, "--provenance=false", "--sbom=false"}
 	if dockerfile != "" {
 		args = append(args, "-f", filepath.Join(contextDir, dockerfile))
 	}
 	args = append(args, contextDir)
-	_, err := c.run(ctx, args...)
+	_, err := c.runEnv(ctx, []string{"SOURCE_DATE_EPOCH=0"}, args...)
 	return err
 }
 
