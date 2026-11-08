@@ -83,7 +83,7 @@ func validateSingleManifestYAML(t *testing.T, content string) *Report {
 	t.Helper()
 	dir := t.TempDir()
 	writeManifest(t, dir, "svc-a", content)
-	manifests, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}
@@ -213,7 +213,7 @@ func TestValidateAggregate_Valid(t *testing.T) {
 	writeManifest(t, dir, "svc-a", validManifest)
 	writeManifest(t, dir, "mysql", externalManifest)
 
-	manifests, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}
@@ -251,7 +251,7 @@ func TestValidateAggregate_MissingHealthAndDependency(t *testing.T) {
 	// svc-b 依赖 mysql，但 mysql 清单不在扫描范围内。
 	writeManifest(t, dir, "svc-b", strings.Replace(validManifest, "project: svc-a", "project: svc-b", 1))
 
-	manifests, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
 	rep := ValidateAggregate(manifests, errs)
 	if rep.OK() {
 		t.Fatalf("expected errors, got none")
@@ -265,22 +265,36 @@ func TestValidateAggregate_MissingHealthAndDependency(t *testing.T) {
 	}
 }
 
-func TestValidateAggregate_DuplicateAndPortConflict(t *testing.T) {
+func TestValidateAggregate_PortConflict(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, "one", validManifest)
-	writeManifest(t, dir, "two", validManifest) // 完全同名
 	// 不同名但端口冲突
 	other := strings.Replace(validManifest, "project: svc-a", "project: svc-c", 1)
 	writeManifest(t, dir, "three", other)
 
-	manifests, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
 	rep := ValidateAggregate(manifests, errs)
 	joined := strings.Join(rep.Errors, "\n")
-	if !strings.Contains(joined, "duplicate project") {
-		t.Errorf("missing duplicate error: %v", rep.Errors)
-	}
 	if !strings.Contains(joined, "port conflict") {
 		t.Errorf("missing port conflict error: %v", rep.Errors)
+	}
+}
+
+// 重名不再在聚合校验层报错：装载层已按确定性规则取舍
+// （见 load_test.go），校验层只见得到去重后的清单。
+func TestValidateAggregate_DeduplicatedInputPasses(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, "one", validManifest)
+	writeManifest(t, dir, "two", validManifest) // 完全同名
+	writeManifest(t, dir, "mysql", externalManifest)
+
+	manifests, dups, errs := LoadAggregate([]string{dir}, "")
+	if len(dups) != 1 {
+		t.Fatalf("want 1 duplicate group, got %d", len(dups))
+	}
+	rep := ValidateAggregate(manifests, errs)
+	if !rep.OK() {
+		t.Fatalf("deduplicated input must validate, got: %v", rep.Errors)
 	}
 }
 
@@ -314,7 +328,7 @@ func TestValidateAggregate_Cycle(t *testing.T) {
 	writeManifest(t, dir, "a", serviceManifest("x-a", 9001, "x-b"))
 	writeManifest(t, dir, "b", serviceManifest("x-b", 9002, "x-a"))
 
-	manifests, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
 	rep := ValidateAggregate(manifests, errs)
 	joined := strings.Join(rep.Errors, "\n")
 	if !strings.Contains(joined, "dependency cycle") {
@@ -325,7 +339,7 @@ func TestValidateAggregate_Cycle(t *testing.T) {
 func TestValidateAggregate_ContainerFrozen(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, "frozen", validManifest+"\ncontainer: { enabled: true }\n")
-	manifests, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
 	rep := ValidateAggregate(manifests, errs)
 	joined := strings.Join(rep.Errors, "\n")
 	if !strings.Contains(joined, "container 段当前冻结") {
@@ -340,7 +354,7 @@ func TestValidateAggregate_BadEnums(t *testing.T) {
 	bad = strings.Replace(bad, "group: core", "group: kitchen", 1)
 	writeManifest(t, dir, "bad", bad)
 
-	manifests, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
 	rep := ValidateAggregate(manifests, errs)
 	joined := strings.Join(rep.Errors, "\n")
 	for _, want := range []string{"group 非法", "manager 非法", "exposure 非法"} {

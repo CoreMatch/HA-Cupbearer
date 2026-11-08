@@ -24,9 +24,11 @@ var (
 	validSmokeMethods = map[string]bool{"GET": true, "POST": true, "PUT": true, "DELETE": true}
 )
 
-// Report 是一次聚合校验的结果。Errors 为空即全部通过。
+// Report 是一次聚合校验的结果。Errors 为空即可执行（OK）；
+// Warnings 只提示不阻断。
 type Report struct {
 	Errors    []string    `json:"errors"`
+	Warnings  []string    `json:"warnings"`
 	Manifests []*Manifest `json:"-"`
 }
 
@@ -36,11 +38,22 @@ func (r *Report) addf(format string, args ...interface{}) {
 	r.Errors = append(r.Errors, fmt.Sprintf(format, args...))
 }
 
+func (r *Report) addwf(format string, args ...interface{}) {
+	r.Warnings = append(r.Warnings, fmt.Sprintf(format, args...))
+}
+
+// AddError / AddWarning 供调用方（编排器）注入上下文相关的结论，
+// 如重名取舍在严格开关下的升降级。
+func (r *Report) AddError(msg string)   { r.Errors = append(r.Errors, msg) }
+func (r *Report) AddWarning(msg string) { r.Warnings = append(r.Warnings, msg) }
+
 // ValidateAggregate 对装载结果做全量校验：单清单字段规则 +
-// 跨清单一致性（重名、依赖存在性、依赖环、端口冲突）。
+// 跨清单一致性（依赖存在性、依赖环、端口冲突）。
+// 入参应已去重（LoadAggregate 按确定性规则取舍重名并返回
+// DuplicateGroup；重名的升降级由调用方按开关处理，不在这里硬阻断）。
 // 装载错误以 loadErrors 传入，一并体现在报告中。
 func ValidateAggregate(manifests []*Manifest, loadErrors []error) *Report {
-	rep := &Report{Manifests: manifests}
+	rep := &Report{Manifests: manifests, Warnings: []string{}}
 	for _, err := range loadErrors {
 		rep.addf("load: %v", err)
 	}
@@ -49,10 +62,6 @@ func ValidateAggregate(manifests []*Manifest, loadErrors []error) *Report {
 	for _, m := range manifests {
 		validateSingle(rep, m)
 		if m.Project == "" {
-			continue
-		}
-		if prev, dup := byProject[m.Project]; dup {
-			rep.addf("duplicate project %q: %s 与 %s", m.Project, prev.SourcePath, m.SourcePath)
 			continue
 		}
 		byProject[m.Project] = m
