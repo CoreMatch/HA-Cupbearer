@@ -111,6 +111,25 @@ Tinyvisor）。健康探测与冒烟断言打在发布的宿主口上，语义�
 （`orchestration.container.orphan_policy: report | remove`）。
 设计与边界：`knowledge/0011-container-orchestration-minimal-loop.md`。
 
+Runtime 选择与 docker 端点：
+
+- **runtime 选择器**：清单 `runtime:` 字段，`baremetal`（默认）| `container`
+  二选一（`internal/manifest/manifest.go::Manifest`，其它值校验即拒）；
+  配置 `orchestration.overrides.<项目>.runtime` 按部署上下文覆盖清单选择
+  （如生产裸金属、隔离环境容器），覆盖优先。
+- **`docker_host`**：`orchestration.container.docker_host` 显式指定 docker
+  端点（如 `unix:///run/user/1000/docker.sock`）；留空时按序探测
+  （`internal/docker/docker.go::DetectHost`）：
+  1. 环境变量 `DOCKER_HOST`（CLI 本身也尊重它与当前 context）；
+  2. `$XDG_RUNTIME_DIR/docker.sock` —— rootless 用户单元；
+  3. `/var/run/docker.sock` —— 系统 dockerd。
+- **rootless 前置**（无特权验证的默认形态）：
+  `dockerd-rootless-setuptool.sh install` → `systemctl --user start docker`
+  （systemd **用户**单元，不碰系统 dockerd）。前置条件：subuid/subgid、
+  rootlesskit、slirp4netns、内核非特权 overlayfs（无需 fuse-overlayfs）；
+  端点即 `$XDG_RUNTIME_DIR/docker.sock`。验证过程见
+  `knowledge/0011-container-orchestration-minimal-loop.md`。
+
 回滚语义（重要，与裸金属的"切软链"对应）：
 
 - **回滚按镜像 digest 钉死，不按标签。** 标签是可移动的引用——同版本重打
@@ -119,14 +138,41 @@ Tinyvisor）。健康探测与冒烟断言打在发布的宿主口上，语义�
   镜像仍在、再按摘要定位重建；幂等判定也比较摘要而非标签。目标镜像已不
   存在时**明确报"目标镜像已不存在"并拒绝**，绝不退回按标签定位、绝不落到
   别的东西上。标签在记录里只作为人类可读的名字出现。
+- **摘要丢了怎么办**：两种形态——① 记录的摘要对应的镜像本机已不在：
+  回滚明确拒绝（自动与一键皆然），恢复手段是**重新部署该版本**（重建或
+  重新装载镜像），运行记录记下新摘要后回滚能力恢复；② 该版本从未在本机
+  部署过、没有任何已记录摘要：回滚同样拒绝。不存在"找个近似镜像顶上"的
+  路径。
 - **`cascade: true` 跨运行时真实现**：容器依赖方按其自身当前运行的摘要
   重建，裸金属依赖方经 Tinyvisor 重启，两侧都必须回到健康（含冒烟）。
-  不存在"接受 cascade 参数却只回滚一个"的降级形态。
+  不存在"接受 cascade 参数却只回滚一个"的降级形态。执行顺序上游先行、
+  依赖方随后，逐个项目回到健康（含冒烟），任一失败整体报失败。
 - **镜像构建可复现**（回滚钉死 digest 的前提）：构建固定
   `--provenance=false --sbom=false` + `SOURCE_DATE_EPOCH=0`——同输入
   连续两次构建摘要一致（非确定性来源是 BuildKit 默认的
   provenance/attestation 清单，携带构建时间戳）。仍不可复现的边界：
   基础镜像标签被上游重推、上下文内容真实变化——那属于输入变了。
+
+## Manifest 凭据写法：只允许 `${secret:<name>}`
+
+凭据值绝不进 `deploy-manifest.yaml`。装载层
+（`internal/manifest/manifest.go::scanCredentials`）对清单原始结构全文扫描，
+命中以下任一形态即**整体拒绝装载**（报出位置与原因）：
+
+1. **凭据类键名带字面值**：键名含 password / passwd / secret / token /
+   api_key / api-key / credential / private_key / access_key（大小写不
+   敏感）时，值必须是整值的 `${secret:<name>}` 引用；
+2. **任意位置的值形似凭据**（与键名无关）：PEM 私钥块
+   （`-----BEGIN … PRIVATE KEY-----`）、GitHub 令牌族
+   （`ghp_`/`gho_`/`ghs_`/`ghu_`/`github_pat_` + ≥16 字符）、AWS 访问密钥
+   （`AKIA` + 16 字符）、JWT（`eyJ` 三段式）、≥48 位十六进制串、
+   ≥48 字符 base64 串；
+3. **非法占位符**：任何不是完整 `${secret:<name>}` 的 `${...}`。冒烟请求
+   （`facts.smoke`）的 headers 只接受字面量或整值引用、body 允许内联
+   `${secret:<name>}` 替换，其余占位形态一律拒绝。
+
+键值在运行时从 `credentials_path` 所指文件（0600，不进仓库）的
+`smoke_secrets` 解析。
 
 ## 运维注意事项（docker CLI 踩坑）
 
