@@ -124,6 +124,44 @@ func Stage(ctx context.Context, m *manifest.Manifest, destDir string, githubToke
 	return expectSHA, nil
 }
 
+// VerifyLocalArtifact 校验 local_path 来源的产物与其校验和旁路：
+// 文件必须存在且是普通文件；同名 .sha256 旁路必须存在；旁路声明的
+// 校验和必须与产物实际内容一致。任一失败返回带具体路径的错误。
+// 部署流水线（Stage）对这三者都是硬要求——在前置检查阶段查出来，
+// 而不是等流水线执行到 artifact 步才失败。
+func VerifyLocalArtifact(m *manifest.Manifest) error {
+	p := m.ResolveLocalPath()
+	if strings.TrimSpace(p) == "" {
+		return fmt.Errorf("local_path artifact path is empty")
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		return fmt.Errorf("local_path artifact missing: %s: %w", p, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("local_path artifact %s is a directory, not a file", p)
+	}
+	sumPath := p + ".sha256"
+	data, err := os.ReadFile(sumPath)
+	if err != nil {
+		return fmt.Errorf("checksum sidecar missing: %s (local_path 部署硬要求同名 .sha256 旁路；产物 %s 在位但旁路缺失): %w",
+			sumPath, p, err)
+	}
+	expect := parseChecksum(string(data))
+	if expect == "" {
+		return fmt.Errorf("checksum sidecar %s is empty or unparseable", sumPath)
+	}
+	got, err := fileSHA256(p)
+	if err != nil {
+		return fmt.Errorf("hash local artifact %s: %w", p, err)
+	}
+	if got != expect {
+		return fmt.Errorf("checksum sidecar %s mismatch: sidecar declares %s, artifact actually hashes to %s (stale sidecar or modified artifact)",
+			sumPath, expect, got)
+	}
+	return nil
+}
+
 // EnsureDiskSpaceFor 是部署前置检查（preflight）复用的磁盘空间预检：
 // 能确定产物大小时校验 destDir 可用空间（含余量），不足返回带差额的错误。
 // 返回值 checked 表示空间是否实际得到校验——产物大小未知（如 ci_release

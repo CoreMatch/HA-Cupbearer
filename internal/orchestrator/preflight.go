@@ -11,7 +11,8 @@ package orchestrator
 // 检查面（deploy 模式）：安装根目录/版本目录/共享数据目录可写性、
 // current 软链形态、workdir、env 文件存在可读、
 // smoke 引用的密钥可在凭据文件解析、目标端口占用（跳过"就是它自己"）、
-// 磁盘空间、Manifest 声明的依赖可达性、Tinyvisor 可达与 apiKey 有效。
+// 磁盘空间、local_path 产物本体与校验和旁路、Manifest 声明的依赖可达性、
+// Tinyvisor 可达与 apiKey 有效。
 // rollback 模式不查产物与磁盘（不拉新产物），其余相同。
 
 import (
@@ -184,6 +185,7 @@ func (o *Orchestrator) preflightScope(ctx context.Context, ms []*manifest.Manife
 		o.checkPorts(ctx, m, eff, report)
 		if mode == "deploy" {
 			o.checkDiskSpace(ctx, m, eff, report)
+			o.checkArtifact(m, report)
 		}
 		o.checkDependencies(ctx, m, byProject, scopeSet, report)
 	}
@@ -526,6 +528,23 @@ func (o *Orchestrator) checkDiskSpace(ctx context.Context, m *manifest.Manifest,
 		return
 	}
 	report.add(CheckResult{Project: m.Project, Name: "disk-space", OK: true, Detail: "enough free space for artifact at " + destDir})
+}
+
+// checkArtifact 检查 local_path 来源的产物本体与校验和旁路（部署模式）：
+// 流水线（artifact.Stage）对"产物在位 + 同名 .sha256 旁路 + 两者内容一致"
+// 是硬要求，缺一必在 artifact 步失败——前置检查必须提前查出，不让人
+// 跑到流水线第一步才撞见。ci_release 为网络来源，其可达性由磁盘预检
+// 的 HEAD 与流水线自身覆盖，不在本检查范围。
+func (o *Orchestrator) checkArtifact(m *manifest.Manifest, report *PreflightReport) {
+	if m.Baremetal.Artifact.Source != "local_path" {
+		return
+	}
+	if err := artifact.VerifyLocalArtifact(m); err != nil {
+		report.add(CheckResult{Project: m.Project, Name: "artifact", Level: LevelBlocker, Detail: err.Error()})
+		return
+	}
+	report.add(CheckResult{Project: m.Project, Name: "artifact", OK: true,
+		Detail: fmt.Sprintf("local_path artifact %s present; checksum sidecar matches", m.ResolveLocalPath())})
 }
 
 // checkDependencies 检查 Manifest 声明的依赖服务当前是否可达：

@@ -5,6 +5,8 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -79,7 +81,14 @@ func buildOrchestrationEnv(t *testing.T) (*orchestrator.Orchestrator, *models.Co
 	ln.Close()
 
 	artifactPath := filepath.Join(base, "svc-a-linux-amd64")
-	if err := os.WriteFile(artifactPath, []byte("binary-v1"), 0o755); err != nil {
+	artifactContent := []byte("binary-v1")
+	if err := os.WriteFile(artifactPath, artifactContent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// local_path 来源强制 sha256 校验：旁路校验和文件必须同时在
+	// （preflight 的 artifact 检查与部署流水线都硬要求）。
+	sum := sha256.Sum256(artifactContent)
+	if err := os.WriteFile(artifactPath+".sha256", []byte(hex.EncodeToString(sum[:])+"  svc-a-linux-amd64\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
