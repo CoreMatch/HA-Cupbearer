@@ -1,4 +1,4 @@
-version: "1.9.0"
+version: "1.11.0"
 
 server:
   host: "0.0.0.0"
@@ -59,6 +59,13 @@ matchmaking:
       team_sizes: [1, 1]
     - match_type: "2v2"
       team_sizes: [2, 2]
+  # 成局分配有效期（秒，config 1.10.0+）：OPS 分配查询端点
+  # GET /api/matchmaking/assignment/{uuid} 用；超过该 TTL 的成局视为失效。
+  assignment_ttl_seconds: 1800
+  # 房间预占 TTL（秒，config 1.11.0+）：成局时对房间预占的保留时长。
+  room_reservation_ttl_seconds: 900
+  # 子服→房间静态清单（config 1.11.0+，可选）：整体不配置 = 不启用房间层，
+  # 保持 1.9.x 行为。启用时每个子服必须至少一个房间（见 config 校验）。
   # 成局后下发给客户端的游戏服务器地址（交接链路用）。host 留空
   # （默认）视为未配置：成局响应不携带该字段，客户端回落本地配置。
   # 由 .env 的 MCA_JOIN_TARGET_HOST / MCA_JOIN_TARGET_PORT 注入。

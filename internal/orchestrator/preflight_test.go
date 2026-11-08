@@ -839,7 +839,7 @@ func TestPreflightRollbackModeSkipsArtifactChecks(t *testing.T) {
 
 	report := runPreflight(t, env, "rollback")
 	assertNoFindings(t, report)
-	for _, name := range []string{"disk-space", "version-dir"} {
+	for _, name := range []string{"disk-space", "version-dir", "artifact"} {
 		if res := findResults(report, name); len(res) != 0 {
 			t.Errorf("rollback mode must skip %s, got %+v", name, res)
 		}
@@ -849,5 +849,83 @@ func TestPreflightRollbackModeSkipsArtifactChecks(t *testing.T) {
 		if len(findResults(report, name)) == 0 {
 			t.Errorf("rollback mode must still check %s", name)
 		}
+	}
+}
+
+// svcAArtifactPath 从装载的清单解析 svc-a 的 local_path 产物路径。
+func svcAArtifactPath(t *testing.T, env *preflightEnv) string {
+	t.Helper()
+	ms, rep := env.orch.Load()
+	if !rep.OK() {
+		t.Fatalf("aggregate validation failed: %v", rep.Errors)
+	}
+	for _, m := range ms {
+		if m.Project == "svc-a" {
+			return m.ResolveLocalPath()
+		}
+	}
+	t.Fatal("svc-a manifest not found")
+	return ""
+}
+
+func TestPreflightArtifactMissingIsBlocker(t *testing.T) {
+	env := newPreflightEnv(t)
+	p := svcAArtifactPath(t, env)
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+
+	report := runPreflight(t, env, "deploy")
+	results := findResults(report, "artifact")
+	if len(results) != 1 || results[0].OK || results[0].Level != LevelBlocker {
+		t.Fatalf("expected exactly one artifact blocker, got %+v", results)
+	}
+	if !strings.Contains(results[0].Detail, p) {
+		t.Fatalf("detail must name the missing artifact path %s: %s", p, results[0].Detail)
+	}
+}
+
+func TestPreflightArtifactSidecarMissingIsBlocker(t *testing.T) {
+	env := newPreflightEnv(t)
+	p := svcAArtifactPath(t, env)
+	if err := os.Remove(p + ".sha256"); err != nil {
+		t.Fatal(err)
+	}
+
+	report := runPreflight(t, env, "deploy")
+	results := findResults(report, "artifact")
+	if len(results) != 1 || results[0].OK || results[0].Level != LevelBlocker {
+		t.Fatalf("expected exactly one artifact blocker, got %+v", results)
+	}
+	if !strings.Contains(results[0].Detail, p+".sha256") {
+		t.Fatalf("detail must name the missing sidecar %s.sha256: %s", p, results[0].Detail)
+	}
+}
+
+func TestPreflightArtifactChecksumMismatchIsBlocker(t *testing.T) {
+	env := newPreflightEnv(t)
+	p := svcAArtifactPath(t, env)
+	// 64 位十六进制但与实际内容不符：模拟"旁路过期/产物被改"。
+	stale := strings.Repeat("0", 64)
+	if err := os.WriteFile(p+".sha256", []byte(stale+"  svc-a-linux-amd64\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report := runPreflight(t, env, "deploy")
+	results := findResults(report, "artifact")
+	if len(results) != 1 || results[0].OK || results[0].Level != LevelBlocker {
+		t.Fatalf("expected exactly one artifact blocker, got %+v", results)
+	}
+	if !strings.Contains(results[0].Detail, "mismatch") {
+		t.Fatalf("detail must report the mismatch: %s", results[0].Detail)
+	}
+}
+
+func TestPreflightArtifactPresentIsReportedOK(t *testing.T) {
+	env := newPreflightEnv(t)
+	report := runPreflight(t, env, "deploy")
+	results := findResults(report, "artifact")
+	if len(results) != 1 || !results[0].OK {
+		t.Fatalf("expected exactly one ok artifact result, got %+v", results)
 	}
 }

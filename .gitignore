@@ -3,7 +3,6 @@ build/
 .trae/
 deploy/docker/hasd
 HA-Contract
-1
 deploy/.env
 deploy/secrets/*
 !deploy/secrets/.gitkeep
