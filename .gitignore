@@ -1,6 +1,7 @@
 data/
 build/
 .trae/
+deploy/docker/hasd
 HA-Contract
 1
 deploy/.env

@@ -27,6 +27,7 @@ import (
 
 	"HA-Services-Deployer/internal/artifact"
 	"HA-Services-Deployer/internal/config"
+	"HA-Services-Deployer/internal/docker"
 	"HA-Services-Deployer/internal/manifest"
 	"HA-Services-Deployer/internal/models"
 	"HA-Services-Deployer/internal/tinyvisor"
@@ -101,10 +102,11 @@ type Run struct {
 }
 
 type Orchestrator struct {
-	cfg   *models.Config
-	creds *config.Credentials
-	tv    *tinyvisor.Client
-	store *Store
+	cfg    *models.Config
+	creds  *config.Credentials
+	tv     *tinyvisor.Client
+	docker docker.Driver
+	store  *Store
 
 	mu      sync.Mutex
 	current *Run
@@ -115,11 +117,16 @@ func New(cfg *models.Config, creds *config.Credentials) *Orchestrator {
 	if stateDir == "" {
 		stateDir = "./data/deploy"
 	}
+	dockerHost := cfg.Orchestration.Container.DockerHost
+	if dockerHost == "" {
+		dockerHost = docker.DetectHost() // DOCKER_HOST → rootless 用户 socket → 系统 socket
+	}
 	return &Orchestrator{
-		cfg:   cfg,
-		creds: creds,
-		tv:    tinyvisor.New(cfg.Orchestration.Tinyvisor.URL, creds.TinyvisorAPIKey),
-		store: NewStore(stateDir),
+		cfg:    cfg,
+		creds:  creds,
+		tv:     tinyvisor.New(cfg.Orchestration.Tinyvisor.URL, creds.TinyvisorAPIKey),
+		docker: docker.NewCLI(dockerHost),
+		store:  NewStore(stateDir),
 	}
 }
 
@@ -250,18 +257,31 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 	}
 	m := o.resolveManifest(rawM)
 	eff := o.effective(m)
-	if eff.manager != "tinyvisor" {
+	if eff.runtime != "container" && eff.manager != "tinyvisor" {
 		return nil, fmt.Errorf("project %q manager is %q (foreign): rollback refused", project, eff.manager)
 	}
 
-	active := readActiveVersion(eff.root)
-	target := to
-	if target == "" {
+	// 候选版本：裸金属 = 版本目录列表；容器 = 镜像标签列表（新→旧）。
+	var active string
+	var candidates []string
+	if eff.runtime == "container" {
+		active = o.containerActiveVersion(context.Background(), m)
+		tags, err := o.docker.ImageTags(context.Background(), m.Project)
+		if err != nil {
+			return nil, err
+		}
+		candidates = tags
+	} else {
+		active = readActiveVersion(eff.root)
 		releases, err := listReleases(eff.root)
 		if err != nil {
 			return nil, err
 		}
-		for _, name := range releases {
+		candidates = releases
+	}
+	target := to
+	if target == "" {
+		for _, name := range candidates {
 			if name != active {
 				target = name
 				break
@@ -269,15 +289,19 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 		}
 	}
 	if target == "" {
-		return nil, fmt.Errorf("no previous release to roll back to (root %s)", eff.root)
+		return nil, fmt.Errorf("no previous version to roll back to (project %s)", project)
 	}
 	if target == active {
-		return nil, fmt.Errorf("release %q is already active", target)
+		return nil, fmt.Errorf("version %q is already active", target)
 	}
 
 	order := []string{project}
-	if cascade {
+	if cascade && eff.runtime != "container" {
 		order = append(order, requiredDependents(ms, project)...)
+	}
+	if cascade && eff.runtime == "container" {
+		// 容器依赖方的连带回滚重启本轮未实现，如实降级为单项回滚。
+		cascade = false
 	}
 
 	// 单飞先行：已有运行就不必再跑前置检查。
@@ -318,7 +342,11 @@ func (o *Orchestrator) Rollback(project, to string, cascade bool) (*Run, error) 
 
 	// 快照先于执行协程：之后 run 会被执行侧并发写入。
 	snap := snapshotRun(run)
-	go o.executeRollback(run, m, target, cascade)
+	if eff.runtime == "container" {
+		go o.executeRollbackContainer(run, m, eff, target)
+	} else {
+		go o.executeRollback(run, m, target, cascade)
+	}
 	return snap, nil
 }
 
@@ -348,6 +376,12 @@ func (o *Orchestrator) execute(run *Run, ms []*manifest.Manifest) {
 	state, notes := o.loadStateRecovered()
 	if len(notes) > 0 {
 		run.Notes = append(run.Notes, notes...)
+		_ = o.store.SaveRun(run)
+	}
+
+	// 孤儿容器：带本编排器标签但项目已不在清单——默认只报不删。
+	o.reconcileOrphanContainers(ctx, run, ms)
+	if len(run.Notes) > 0 {
 		_ = o.store.SaveRun(run)
 	}
 
@@ -431,7 +465,30 @@ func (o *Orchestrator) executeProject(ctx context.Context, run *Run, raw *manife
 	}
 
 	eff := o.effective(m)
-	res.ActiveVersion = readActiveVersion(eff.root)
+	if eff.runtime == "container" {
+		res.ActiveVersion = o.containerActiveVersion(ctx, m)
+	} else {
+		res.ActiveVersion = readActiveVersion(eff.root)
+	}
+
+	if eff.runtime == "container" {
+		if run.Options.DryRun {
+			res.Outcome = OutcomeDryRun
+			res.Steps = append(res.Steps,
+				StepRecord{Name: "image", OK: true, Detail: "dry-run: " + m.Container.Image.Source + " -> " + containerImageRef(m)},
+				StepRecord{Name: "ensure-volumes", OK: true, Detail: fmt.Sprintf("dry-run: mkdir %d volume dir(s)", len(m.Container.Volumes))},
+				StepRecord{Name: "recreate", OK: true, Detail: "dry-run: recreate container " + m.Project},
+				StepRecord{Name: "health", OK: true, Detail: "dry-run: probe " + mustProbeURL(o, m)},
+			)
+			if len(m.Facts.Smoke) > 0 {
+				res.Steps = append(res.Steps, StepRecord{Name: "smoke", OK: true,
+					Detail: fmt.Sprintf("dry-run: %d smoke check(s)", len(m.Facts.Smoke))})
+			}
+			return res
+		}
+		o.deployContainer(ctx, run, m, eff, res)
+		return res
+	}
 
 	if eff.manager != "tinyvisor" {
 		// foreign：只读不碰。仅附一次被动探测用于状态可见性。
@@ -859,13 +916,17 @@ func (o *Orchestrator) Status(ctx context.Context) (*StatusReport, error) {
 		}
 
 		eff := o.effective(m)
-		view.Manager = eff.manager
-		view.ActiveVersion = readActiveVersion(eff.root)
-
-		if eff.manager != "tinyvisor" {
-			view.Foreign = true
-		} else if tvScripts != nil {
-			view.TinyvisorState = tvScripts[m.Project]
+		if eff.runtime == "container" {
+			view.Manager = "container"
+			view.ActiveVersion = o.containerActiveVersion(ctx, m)
+		} else {
+			view.Manager = eff.manager
+			view.ActiveVersion = readActiveVersion(eff.root)
+			if eff.manager != "tinyvisor" {
+				view.Foreign = true
+			} else if tvScripts != nil {
+				view.TinyvisorState = tvScripts[m.Project]
+			}
 		}
 
 		if err := o.probeOnce(ctx, m, eff.healthPort); err != nil {

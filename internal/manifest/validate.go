@@ -22,6 +22,9 @@ var (
 	smokeSecretAnyRe  = regexp.MustCompile(`\$\{secret:[A-Za-z0-9_-]+\}`)
 	smokeBraceTokenRe = regexp.MustCompile(`\$\{[^}]*\}`)
 	validSmokeMethods = map[string]bool{"GET": true, "POST": true, "PUT": true, "DELETE": true}
+
+	// validImageSources 是 container.image.source 的合法取值。
+	validImageSources = map[string]bool{"build": true, "local_image": true, "registry": true}
 )
 
 // Report 是一次聚合校验的结果。Errors 为空即可执行（OK）；
@@ -91,8 +94,13 @@ func validateSingle(rep *Report, m *Manifest) {
 	} else if !projectNameRe.MatchString(m.Project) {
 		rep.addf("%s: project 只能包含小写字母、数字与连字符且以字母数字开头", ctx)
 	}
+	switch m.Runtime {
+	case "", "baremetal", "container":
+	default:
+		rep.addf("%s: runtime 必须为 baremetal 或 container（当前 %q）", ctx, m.Runtime)
+	}
 	if m.Container.Enabled {
-		rep.addf("%s: container 段当前冻结，enabled 必须为 false", ctx)
+		rep.addf("%s: container.enabled 已退役（2026-11-08 全仓扫描确认无清单在用），请改用顶层 runtime 选择器", ctx)
 	}
 
 	if m.IsExternal() {
@@ -111,7 +119,12 @@ func validateSingle(rep *Report, m *Manifest) {
 	}
 
 	validateFacts(rep, m)
-	validateBaremetal(rep, m)
+	// 两段共存、按选择器校验生效的一段；未生效段为信息性声明不校验。
+	if m.Runtime == "container" {
+		validateContainer(rep, m)
+	} else {
+		validateBaremetal(rep, m)
+	}
 }
 
 func validateFacts(rep *Report, m *Manifest) {
@@ -227,6 +240,61 @@ func validateSmoke(rep *Report, m *Manifest, portNames map[string]bool) {
 			if !smokeSecretAnyRe.MatchString(tok) {
 				rep.addf("%s: body 含非法占位符 %q（只允许 ${secret:<name>}）", ctx, tok)
 			}
+		}
+	}
+}
+
+// validateContainer 校验 runtime=container 时的执行段。
+// 密钥边界：清单任何位置都不允许出现疑似凭据值——装载层
+// (LoadFile scanCredentials) 已做代码级拦截，这里不重复。
+func validateContainer(rep *Report, m *Manifest) {
+	ctx := m.Project
+	c := m.Container
+
+	// install.root 对容器项目同样必填：它是卷宿主侧的根目录。
+	if m.Baremetal.Install.Root == "" || !strings.HasPrefix(m.Baremetal.Install.Root, "/") {
+		rep.addf("%s: 容器项目同样要求 baremetal.install.root 为绝对路径（卷的宿主侧根）", ctx)
+	}
+
+	if !validImageSources[c.Image.Source] {
+		rep.addf("%s: container.image.source 非法（当前 %q），支持 build | local_image | registry", ctx, c.Image.Source)
+	}
+	switch c.Image.Source {
+	case "build":
+		if c.Image.Context == "" {
+			rep.addf("%s: container.image.context 必填（build 来源）", ctx)
+		} else if filepath.IsAbs(c.Image.Context) || strings.HasPrefix(filepath.Clean(c.Image.Context), "..") {
+			rep.addf("%s: container.image.context 必须为仓库根内的相对路径", ctx)
+		}
+	case "local_image":
+		if c.Image.LocalPath == "" {
+			rep.addf("%s: container.image.local_path 必填（local_image 来源）", ctx)
+		}
+	case "registry":
+		if c.Image.Repo == "" {
+			rep.addf("%s: container.image.repo 必填（registry 来源）", ctx)
+		}
+	}
+
+	portNames := make(map[string]bool)
+	for _, p := range m.Facts.Ports {
+		portNames[p.Name] = true
+	}
+	for i, v := range c.Volumes {
+		if !strings.HasPrefix(v.Container, "/") {
+			rep.addf("%s: container.volumes[%d].container 必须为容器内绝对路径", ctx, i)
+		}
+		if v.HostRelative == "" {
+			rep.addf("%s: container.volumes[%d].host_relative 必填", ctx, i)
+			continue
+		}
+		if cleaned := filepath.Clean(v.HostRelative); filepath.IsAbs(v.HostRelative) || cleaned != v.HostRelative || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+			rep.addf("%s: container.volumes[%d].host_relative 必须为相对容器根的路径（不允许 ..）", ctx, i)
+		}
+	}
+	for name := range c.ContainerPorts {
+		if !portNames[name] {
+			rep.addf("%s: container.container_ports 端口名 %q 未在 facts.ports 中声明", ctx, name)
 		}
 	}
 }

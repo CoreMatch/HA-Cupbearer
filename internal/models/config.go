@@ -43,6 +43,19 @@ type OrchestrationConfig struct {
 	// StrictProjectNames 为 true 时项目清单重名按校验失败处理（拒绝运行）；
 	// 默认 false：重名按装载顺序取第一个并记警告（并行 worktree 常态）。
 	StrictProjectNames bool `yaml:"strict_project_names" json:"strict_project_names"`
+	// Container 为容器运行时的全局参数（仅对 runtime=container 项目生效）。
+	Container ContainerRuntimeConfig `yaml:"container" json:"container"`
+}
+
+// ContainerRuntimeConfig 描述如何连接容器运行时。
+type ContainerRuntimeConfig struct {
+	// DockerHost 指定 docker 端点（如 unix:///run/user/1000/docker.sock）。
+	// 留空时按序探测：环境变量 DOCKER_HOST → $XDG_RUNTIME_DIR/docker.sock
+	// （rootless 用户单元，非特权验证的默认形态）→ /var/run/docker.sock。
+	DockerHost string `yaml:"docker_host" json:"docker_host"`
+	// OrphanPolicy 处置带本编排器标签但清单中已不存在的项目容器：
+	// report（默认，只报不删）| remove。
+	OrphanPolicy string `yaml:"orphan_policy" json:"orphan_policy"`
 }
 
 type TinyvisorTargetConfig struct {
@@ -50,6 +63,8 @@ type TinyvisorTargetConfig struct {
 }
 
 type ProjectOverride struct {
+	// Runtime 覆盖清单的 runtime 选择器（如生产裸金属、隔离环境容器）。
+	Runtime     string `yaml:"runtime,omitempty" json:"runtime,omitempty"`
 	Manager     string `yaml:"manager,omitempty" json:"manager,omitempty"`
 	InstallRoot string `yaml:"install_root,omitempty" json:"install_root,omitempty"`
 	// HealthPort 覆盖健康探测端口（本地验证用独立端口，不改生产 Manifest）。

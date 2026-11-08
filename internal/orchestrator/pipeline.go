@@ -27,6 +27,9 @@ func (o *Orchestrator) resolveManifest(m *manifest.Manifest) *manifest.Manifest 
 	if !ok {
 		return &clone
 	}
+	if ov.Runtime != "" {
+		clone.Runtime = ov.Runtime
+	}
 	if ov.Manager != "" {
 		clone.Baremetal.Process.Manager = ov.Manager
 	}
@@ -45,13 +48,19 @@ func (o *Orchestrator) resolveManifest(m *manifest.Manifest) *manifest.Manifest 
 
 // effective 解析项目在当下部署上下文中的执行参数（入参应为已 resolve 的清单）。
 type effective struct {
+	runtime    string // baremetal（默认）| container
 	manager    string
 	root       string
 	healthPort int // 0 = 沿用 facts.ports 声明
 }
 
 func (o *Orchestrator) effective(m *manifest.Manifest) effective {
+	runtime := m.Runtime
+	if runtime == "" {
+		runtime = "baremetal"
+	}
 	eff := effective{
+		runtime: runtime,
 		manager: m.Baremetal.Process.Manager,
 		root:    m.Baremetal.Install.Root,
 	}

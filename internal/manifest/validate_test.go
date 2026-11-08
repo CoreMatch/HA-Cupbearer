@@ -137,6 +137,102 @@ baremetal:
 	}
 }
 
+// runtime 选择器与 container 段的校验。
+func TestValidateRuntimeSelector(t *testing.T) {
+	// 单清单装载：去掉对 mysql 的依赖，避免依赖缺失干扰本测试。
+	base := strings.Replace(validManifest,
+		"  depends_on:\n    - { project: mysql, kind: required }\n", "", 1)
+	cases := []struct {
+		name    string
+		content string
+		wantErr string // 为空表示应通过
+	}{
+		{"默认 baremetal", base, ""},
+		{"显式 baremetal", base + "runtime: baremetal\n", ""},
+		{"container 段齐备", validContainerManifest, ""},
+		{"非法 runtime", base + "runtime: kubernetes\n", "runtime 必须为"},
+		{"退役开关开启", base + "container: { enabled: true }\n", "container.enabled 已退役"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rep := validateSingleManifestYAML(t, c.content)
+			if c.wantErr == "" {
+				if !rep.OK() {
+					t.Fatalf("expected pass, got: %v", rep.Errors)
+				}
+				return
+			}
+			found := false
+			for _, e := range rep.Errors {
+				if strings.Contains(e, c.wantErr) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("expected error containing %q, got: %v", c.wantErr, rep.Errors)
+			}
+		})
+	}
+}
+
+const validContainerManifest = `
+manifest_version: 1
+project: svc-a
+display_name: Service A
+group: core
+service_version: "1.2.0"
+runtime: container
+facts:
+  ports:
+    - { name: http, port: 2778, exposure: public }
+  health:
+    http: { port_name: http, path: /health, expect_status: 200, timeout_seconds: 3, interval_seconds: 1, retries: 5 }
+baremetal:
+  # install.root 对容器项目同样必填：卷的宿主侧根目录。
+  install: { root: /opt/svc-a }
+container:
+  image: { source: build, context: build/docker }
+  volumes:
+    - { container: /data, host_relative: data }
+`
+
+func TestValidateContainerSection(t *testing.T) {
+	if rep := validateSingleManifestYAML(t, validContainerManifest); !rep.OK() {
+		t.Fatalf("valid container manifest rejected: %v", rep.Errors)
+	}
+
+	cases := []struct {
+		name    string
+		mutate  func(string) string
+		wantErr string
+	}{
+		{"image source 非法", func(s string) string { return strings.Replace(s, "source: build", "source: ftp", 1) }, "image.source 非法"},
+		{"build 缺 context", func(s string) string { return strings.Replace(s, "context: build/docker", "context: \"\"", 1) }, "context 必填"},
+		{"registry 缺 repo", func(s string) string {
+			return strings.Replace(s, "image: { source: build, context: build/docker }", "image: { source: registry }", 1)
+		}, "repo 必填"},
+		{"卷容器路径非绝对", func(s string) string { return strings.Replace(s, "container: /data", "container: data", 1) }, "绝对路径"},
+		{"卷宿主相对路径越界", func(s string) string { return strings.Replace(s, "host_relative: data", "host_relative: ../escape", 1) }, "host_relative"},
+		{"container_ports 未声明端口", func(s string) string {
+			return s + "  container_ports: { ghost: 9999 }\n"
+		}, "container_ports 端口名"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rep := validateSingleManifestYAML(t, c.mutate(validContainerManifest))
+			found := false
+			for _, e := range rep.Errors {
+				if strings.Contains(e, c.wantErr) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("expected error containing %q, got: %v", c.wantErr, rep.Errors)
+			}
+		})
+	}
+}
+
 func TestValidateSmoke_Valid(t *testing.T) {
 	rep := validateSingleManifestYAML(t, smokeManifestYAML(`
     - name: token-issue
@@ -183,11 +279,6 @@ func TestValidateSmoke_Rejections(t *testing.T) {
       path: /x
       headers: { X-Key: "prefix-${secret:k}" }
 `, "不是完整的"},
-		{"bad token in body", `
-    - name: s
-      path: /x
-      body: '{"v":"${env:HOME}"}'
-`, "非法占位符"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -205,6 +296,19 @@ func TestValidateSmoke_Rejections(t *testing.T) {
 				t.Errorf("errors %v must contain %q", rep.Errors, tc.want)
 			}
 		})
+	}
+}
+
+// 非法占位符（非 ${secret:<name>}）现在由装载层凭据拦截直接拒绝。
+func TestLoadFile_RejectsBadTokenInSmokeBody(t *testing.T) {
+	dir := t.TempDir()
+	path := writeManifest(t, dir, "svc-a", smokeManifestYAML(`
+    - name: s
+      path: /x
+      body: '{"v":"${env:HOME}"}'
+`))
+	if _, err := LoadFile(path); err == nil || !strings.Contains(err.Error(), "占位符") {
+		t.Fatalf("bad token must be rejected at load time, got: %v", err)
 	}
 }
 
@@ -336,14 +440,14 @@ func TestValidateAggregate_Cycle(t *testing.T) {
 	}
 }
 
-func TestValidateAggregate_ContainerFrozen(t *testing.T) {
+func TestValidateAggregate_ContainerEnabledRetired(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, "frozen", validManifest+"\ncontainer: { enabled: true }\n")
 	manifests, _, errs := LoadAggregate([]string{dir}, "")
 	rep := ValidateAggregate(manifests, errs)
 	joined := strings.Join(rep.Errors, "\n")
-	if !strings.Contains(joined, "container 段当前冻结") {
-		t.Errorf("missing frozen-container error: %v", rep.Errors)
+	if !strings.Contains(joined, "container.enabled 已退役") {
+		t.Errorf("missing retired-flag error: %v", rep.Errors)
 	}
 }
 

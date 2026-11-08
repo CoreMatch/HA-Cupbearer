@@ -134,16 +134,26 @@ func (o *Orchestrator) preflightScope(ctx context.Context, ms []*manifest.Manife
 
 	resolved := make([]*manifest.Manifest, 0, len(scope))
 	needTinyvisor := false
+	needDocker := false
 	for _, name := range scope {
 		m := o.resolveManifest(byProject[name])
 		resolved = append(resolved, m)
-		if !m.IsExternal() && o.effective(m).manager == "tinyvisor" {
+		eff := o.effective(m)
+		if m.IsExternal() {
+			continue
+		}
+		if eff.runtime == "container" {
+			needDocker = true
+		} else if eff.manager == "tinyvisor" {
 			needTinyvisor = true
 		}
 	}
 
 	if needTinyvisor {
 		o.checkTinyvisor(ctx, report)
+	}
+	if needDocker {
+		o.checkDocker(ctx, report)
 	}
 
 	for _, m := range resolved {
@@ -152,6 +162,16 @@ func (o *Orchestrator) preflightScope(ctx context.Context, ms []*manifest.Manife
 			continue
 		}
 		eff := o.effective(m)
+		if eff.runtime == "container" {
+			if mode == "deploy" {
+				o.checkContainerImage(m, report)
+			}
+			o.checkContainerVolumes(m, eff, report)
+			o.checkSmokeSecrets(m, report)
+			o.checkPorts(ctx, m, eff, report)
+			o.checkDependencies(ctx, m, byProject, scopeSet, report)
+			continue
+		}
 		if eff.manager != "tinyvisor" {
 			// foreign：编排器只读，没有写入动作可检查。
 			report.add(CheckResult{Project: m.Project, Name: "foreign", OK: true,
@@ -168,6 +188,82 @@ func (o *Orchestrator) preflightScope(ctx context.Context, ms []*manifest.Manife
 		o.checkDependencies(ctx, m, byProject, scopeSet, report)
 	}
 	return report
+}
+
+// checkDocker 检查容器运行时可达且当前用户有权操作（全局一次）。
+func (o *Orchestrator) checkDocker(ctx context.Context, report *PreflightReport) {
+	if err := o.docker.Info(ctx); err != nil {
+		report.add(CheckResult{Name: "docker", Level: LevelBlocker,
+			Detail: fmt.Sprintf("docker daemon unreachable or not permitted: %v", err)})
+		return
+	}
+	report.add(CheckResult{Name: "docker", OK: true, Detail: "daemon reachable with current credentials"})
+}
+
+// checkContainerImage 按镜像来源检查部署可行性：
+// build 要构建上下文与 Dockerfile 在场；local_image 要压缩包与旁路校验和；
+// registry 本轮未实现运行时拉取，如实报阻断。
+func (o *Orchestrator) checkContainerImage(m *manifest.Manifest, report *PreflightReport) {
+	img := m.Container.Image
+	switch img.Source {
+	case "build":
+		repoDir := filepath.Dir(m.SourcePath)
+		contextDir := filepath.Join(repoDir, img.Context)
+		if info, err := os.Stat(contextDir); err != nil || !info.IsDir() {
+			report.add(CheckResult{Project: m.Project, Name: "image", Level: LevelBlocker,
+				Detail: fmt.Sprintf("build context %s missing or not a directory", contextDir)})
+			return
+		}
+		dockerfile := img.Dockerfile
+		if dockerfile == "" {
+			dockerfile = "Dockerfile"
+		}
+		if _, err := os.Stat(filepath.Join(contextDir, dockerfile)); err != nil {
+			report.add(CheckResult{Project: m.Project, Name: "image", Level: LevelBlocker,
+				Detail: fmt.Sprintf("dockerfile %s missing in build context %s", dockerfile, contextDir)})
+			return
+		}
+		report.add(CheckResult{Project: m.Project, Name: "image", OK: true,
+			Detail: fmt.Sprintf("build context %s with %s present", contextDir, dockerfile)})
+	case "local_image":
+		if _, err := os.Stat(img.LocalPath); err != nil {
+			report.add(CheckResult{Project: m.Project, Name: "image", Level: LevelBlocker,
+				Detail: fmt.Sprintf("local_image tarball %s missing", img.LocalPath)})
+			return
+		}
+		if _, err := os.Stat(img.LocalPath + ".sha256"); err != nil {
+			report.add(CheckResult{Project: m.Project, Name: "image", Level: LevelBlocker,
+				Detail: fmt.Sprintf("local_image checksum sidecar %s.sha256 missing", img.LocalPath)})
+			return
+		}
+		report.add(CheckResult{Project: m.Project, Name: "image", OK: true,
+			Detail: fmt.Sprintf("local_image %s with checksum sidecar present", img.LocalPath)})
+	case "registry":
+		report.add(CheckResult{Project: m.Project, Name: "image", Level: LevelBlocker,
+			Detail: fmt.Sprintf("registry source %q: authenticated pull not implemented this phase (schema/validation only)", img.Repo)})
+	default:
+		report.add(CheckResult{Project: m.Project, Name: "image", Level: LevelBlocker,
+			Detail: fmt.Sprintf("unknown image source %q", img.Source)})
+	}
+}
+
+// checkContainerVolumes 检查容器根与各卷宿主目录可写（不存在则须可创建）。
+func (o *Orchestrator) checkContainerVolumes(m *manifest.Manifest, eff effective, report *PreflightReport) {
+	if detail, err := probeWritable(eff.root); err != nil {
+		report.add(CheckResult{Project: m.Project, Name: "container-root", Level: LevelBlocker, Detail: err.Error()})
+	} else {
+		report.add(CheckResult{Project: m.Project, Name: "container-root", OK: true, Detail: detail})
+	}
+	for i, v := range m.Container.Volumes {
+		volDir := filepath.Join(eff.root, v.HostRelative)
+		if detail, err := probeWritable(volDir); err != nil {
+			report.add(CheckResult{Project: m.Project, Name: "volume", Level: LevelBlocker,
+				Detail: fmt.Sprintf("volumes[%d] %s: %v", i, volDir, err)})
+		} else {
+			report.add(CheckResult{Project: m.Project, Name: "volume", OK: true,
+				Detail: fmt.Sprintf("volumes[%d] %s -> %s (%s)", i, volDir, v.Container, briefDetail(detail))})
+		}
+	}
 }
 
 // checkTinyvisor 检查 Tinyvisor 可达与 apiKey 有效（全局一次）。
@@ -378,7 +474,11 @@ func (o *Orchestrator) checkSmokeSecrets(m *manifest.Manifest, report *Preflight
 // 那才是本上下文里服务真正要绑定的口。
 func (o *Orchestrator) checkPorts(ctx context.Context, m *manifest.Manifest, eff effective, report *PreflightReport) {
 	selfRunning := false
-	if s, err := o.tv.GetByName(ctx, m.Project); err == nil && s.Status == "running" {
+	if eff.runtime == "container" {
+		if cur, err := o.docker.Inspect(ctx, m.Project); err == nil && cur.Running {
+			selfRunning = true
+		}
+	} else if s, err := o.tv.GetByName(ctx, m.Project); err == nil && s.Status == "running" {
 		selfRunning = true
 	}
 	healthPortName := ""
@@ -403,7 +503,7 @@ func (o *Orchestrator) checkPorts(ctx context.Context, m *manifest.Manifest, eff
 		}
 		if selfRunning {
 			report.add(CheckResult{Project: m.Project, Name: "port", OK: true,
-				Detail: fmt.Sprintf("port %d (%s) held by %s itself (tinyvisor: running; will be restarted)", port, p.Name, m.Project)})
+				Detail: fmt.Sprintf("port %d (%s) held by %s itself (running; will be restarted/recreated)", port, p.Name, m.Project)})
 			continue
 		}
 		report.add(CheckResult{Project: m.Project, Name: "port", Level: LevelBlocker,
