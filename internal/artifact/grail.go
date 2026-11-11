@@ -162,6 +162,17 @@ func decodeGrailPublicKey(b64 string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(b), nil
 }
 
+// ResolveGrailVersion 返回 grail 来源实际解析到的版本字符串
+// （latest 为动态结果，钉住时为钉住值本身）。供编排器把版本目录
+// 与软链对齐到真实取件版本。
+func ResolveGrailVersion(ctx context.Context, m *manifest.Manifest, creds *config.Credentials) (string, error) {
+	art, err := resolveGrailArtifact(ctx, m, creds)
+	if err != nil {
+		return "", err
+	}
+	return art.version, nil
+}
+
 // VerifyGrailSource 是 grail 来源的前置检查：解析 + 端到端验签（只做
 // 元数据层，不下载字节）。返回可读的核对摘要；任何环节失败显式返回错误。
 func VerifyGrailSource(ctx context.Context, m *manifest.Manifest, creds *config.Credentials) (string, error) {
