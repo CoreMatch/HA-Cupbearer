@@ -339,7 +339,7 @@ services:
     logging: *common-logging
 
   ha-cupbearer:
-    image: limeight/ha-services-deployer@sha256:c115937ca8c365fa018c4f32442455a0d9f88eb8193ac3835e8d2f505f43edf7
+    image: limeight/ha-cupbearer@sha256:8eb3ecfcc3f4a6b069d3abf2bd3a2454d6620f48417b8de7e25b4c9eff071650
     restart: unless-stopped
     ports:
       # 内部下发服务：MaintenanceView 经 compose 网络访问，默认仅绑定回环。

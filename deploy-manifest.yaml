@@ -82,8 +82,8 @@ container:
   # 容器形态（2026-11-08 起启用；镜像即版本：<project>:<service_version>）。
   # 已发布镜像（Docker Hub，真实 build → push → 回拉 → 挂回 compose 冒烟全过；
   # linux/amd64 + linux/arm64 多架构 manifest list，digest 为 list 摘要）：
-  #   limeight/ha-cupbearer:f03e15f
-  #   digest sha256:c115937ca8c365fa018c4f32442455a0d9f88eb8193ac3835e8d2f505f43edf7
+  #   limeight/ha-cupbearer:852872a
+  #   digest sha256:8eb3ecfcc3f4a6b069d3abf2bd3a2454d6620f48417b8de7e25b4c9eff071650
   # 本清单的 image 段保持 build 源：编排器容器形态自举走本地构建，
   # 零 registry 依赖（离线可跑）；发布地址仅作上述记录。
   image:
