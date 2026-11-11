@@ -18,7 +18,7 @@ func (h *Handler) Healthz(c *gin.Context) {
 		"success": true,
 		"message": "ok",
 		"data": gin.H{
-			"service": "ha-services-deployer",
+			"service": "ha-cupbearer",
 			"time":    time.Now().UTC().Format(time.RFC3339),
 		},
 	})

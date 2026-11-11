@@ -1,4 +1,4 @@
-// Package tinyvisor 是 Deployer 访问目标机 Tinyvisor 的 HTTP 客户端。
+// Package tinyvisor 是 Cupbearer 访问目标机 Tinyvisor 的 HTTP 客户端。
 // 编排器通过它完成脚本登记（按名幂等 upsert）、原子重启与状态查询；
 // 进程生命周期一律经由 Tinyvisor，编排器自身不拉起任何进程。
 package tinyvisor

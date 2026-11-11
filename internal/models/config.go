@@ -6,7 +6,7 @@ type Config struct {
 	Storage       StorageConfig       `yaml:"storage" json:"storage"`
 	Manifest      ManifestConfig      `yaml:"manifest" json:"manifest"`
 	Orchestration OrchestrationConfig `yaml:"orchestration" json:"orchestration"`
-	// MaintenanceView 描述 Deployer 对运维面板的自动拉起与监督
+	// MaintenanceView 描述 Cupbearer 对运维面板的自动拉起与监督
 	//（config v3 引入；零值 = 全部默认，行为见 internal/mvmanager）。
 	MaintenanceView MaintenanceViewConfig `yaml:"maintenance_view" json:"maintenance_view"`
 }
@@ -37,7 +37,7 @@ type ManifestConfig struct {
 	Path string `yaml:"path" json:"path"`
 }
 
-// OrchestrationConfig 描述 Deployer 作为裸金属编排器的运行参数。
+// OrchestrationConfig 描述 Cupbearer 作为裸金属编排器的运行参数。
 // 零值（enabled=false）时编排能力整体关闭，服务行为与纯下发模式完全一致。
 type OrchestrationConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`

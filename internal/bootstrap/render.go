@@ -27,7 +27,7 @@ var TemplateServices = map[string]string{
 	"mca-server.yaml.tmpl":                 "mca-server",
 	"sdkhandler.yaml.tmpl":                 "ha-webui-sdkhandler",
 	"ha-services-maintenance-view.yaml.tmpl": "ha-services-maintenance-view",
-	"ha-services-deployer.yaml.tmpl":       "ha-services-deployer",
+	"ha-cupbearer.yaml.tmpl":       "ha-cupbearer",
 }
 
 var envVarRefRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -138,7 +138,7 @@ func EnvForBaremetal(in *Inputs, secrets map[string]string, service, secretsDirA
 	if internalYGG == "" {
 		internalYGG = "http://127.0.0.1:2770"
 	}
-	internalDeployer := in.InternalURLs.Deployer
+	internalDeployer := in.InternalURLs.Cupbearer
 	if internalDeployer == "" {
 		internalDeployer = "http://127.0.0.1:18080"
 	}
@@ -242,7 +242,7 @@ func MergeEnvFile(path string, desired map[string]string) (added, kept, drifted 
 		return added, kept, drifted, nil
 	}
 	content := strings.TrimRight(strings.Join(rawLines, "\n"), "\n")
-	header := "\n# ---- 以下变量由 HA-Services-Deployer 首次运行初始化补齐（幂等；已有值不覆盖） ----"
+	header := "\n# ---- 以下变量由 HA-Cupbearer 首次运行初始化补齐（幂等；已有值不覆盖） ----"
 	content = content + header + "\n"
 	for _, k := range added {
 		content += fmt.Sprintf("%s=%s\n", k, desired[k])

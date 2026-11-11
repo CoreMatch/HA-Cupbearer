@@ -58,7 +58,7 @@ func MigrateConfig(cfg map[string]interface{}, tokenGen func() string) (map[stri
 	// If version is missing, we assume it's pre-versioning (initial state)
 	// and set it to "1" if it matches the initial structure, or return error.
 	if current == "" {
-		// For HA-Services-Deployer, the initial version will be "1".
+		// For HA-Cupbearer, the initial version will be "1".
 		// If it's empty, we might want to default it to "1" or handle as v0.
 		// Since we just introduced versioning, let's treat missing version as an error
 		// or provide a baseline migration if we had a previous unversioned format.

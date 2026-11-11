@@ -1,13 +1,13 @@
-// Package mvmanager 负责"Deployer 运行时自动拉起 MaintenanceView"：
+// Package mvmanager 负责"Cupbearer 运行时自动拉起 MaintenanceView"：
 // 用户不需要单独部署 MV。语义边界：
 //
 //   - 已有一份健康的 MV 在配置地址上 → 识别并复用，绝不起第二份；
-//   - 否则找 MV 二进制，生成 MV 配置（Deployer 地址/端口/凭据全部自动推导），
-//     作为受管子进程拉起并监督（有界重启、退出留痕、Deployer 退出时优雅停止）；
-//   - 二进制找不到 → 如实报 unavailable（不致命：Deployer 本体照常运行，
+//   - 否则找 MV 二进制，生成 MV 配置（Cupbearer 地址/端口/凭据全部自动推导），
+//     作为受管子进程拉起并监督（有界重启、退出留痕、Cupbearer 退出时优雅停止）；
+//   - 二进制找不到 → 如实报 unavailable（不致命：Cupbearer 本体照常运行，
 //     容器形态里 MV 本来就是独立 compose 服务）。
 //
-// MV 配置里写入 loopback_session: true（仅 Deployer 自启形态）：面板绑定
+// MV 配置里写入 loopback_session: true（仅 Cupbearer 自启形态）：面板绑定
 // 回环且请求来自回环时免登录；部署凭据仍由 MV 服务端持有并转发，浏览器
 // 永远接触不到（与 knowledge/0007 的凭据边界一致）。
 package mvmanager
@@ -28,7 +28,7 @@ import (
 	"time"
 )
 
-// Config 是 MV 监督的配置（Deployer config v3 maintenance_view 段）。
+// Config 是 MV 监督的配置（Cupbearer config v3 maintenance_view 段）。
 type Config struct {
 	Enabled    bool   `yaml:"enabled"`
 	BinaryPath string `yaml:"binary_path"` // 空 = 自动探测候选位置
@@ -48,7 +48,7 @@ const (
 // Manager 监督至多一个 MV 实例。
 type Manager struct {
 	cfg           Config
-	deployerURL   string
+	cupbearerURL   string
 	deployToken   string
 
 	mu      sync.Mutex
@@ -62,16 +62,16 @@ type Manager struct {
 	stopCh  chan struct{}
 }
 
-// New 构造监督器。deployerURL 是 MV 要回连的 Deployer 地址，
+// New 构造监督器。cupbearerURL 是 MV 要回连的 Cupbearer 地址，
 // deployToken 注入 MV 配置（服务端持有，绝不下发浏览器）。
-func New(cfg Config, deployerURL, deployToken string) *Manager {
+func New(cfg Config, cupbearerURL, deployToken string) *Manager {
 	if cfg.Listen == "" {
 		cfg.Listen = DefaultListen
 	}
 	if cfg.WorkDir == "" {
 		cfg.WorkDir = DefaultWorkDir
 	}
-	return &Manager{cfg: cfg, deployerURL: deployerURL, deployToken: deployToken, mode: "disabled"}
+	return &Manager{cfg: cfg, cupbearerURL: cupbearerURL, deployToken: deployToken, mode: "disabled"}
 }
 
 // StatusView 是只读状态视图（契约：GET /api/v1/deploy/maintenance-view）。
@@ -84,7 +84,7 @@ type StatusView struct {
 	Detail     string `json:"detail,omitempty"`
 }
 
-// Start 执行识别/拉起流程（Deployer 启动时调用一次）。
+// Start 执行识别/拉起流程（Cupbearer 启动时调用一次）。
 func (m *Manager) Start(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -108,7 +108,7 @@ func (m *Manager) Start(ctx context.Context) {
 	binary := m.findBinary()
 	if binary == "" {
 		m.mode = "unavailable"
-		m.detail = "未找到 MaintenanceView 二进制：请把二进制放到 Deployer 同目录，" +
+		m.detail = "未找到 MaintenanceView 二进制：请把二进制放到 Cupbearer 同目录，" +
 			"或在配置 maintenance_view.binary_path 指定路径（容器形态可忽略：MV 是独立 compose 服务）"
 		log.Printf("mvmanager: %s", m.detail)
 		return
@@ -147,7 +147,7 @@ func (m *Manager) Start(ctx context.Context) {
 	go m.supervise(binary)
 }
 
-// Stop 优雅停止受管子进程（Deployer 退出时调用）。
+// Stop 优雅停止受管子进程（Cupbearer 退出时调用）。
 func (m *Manager) Stop() {
 	m.mu.Lock()
 	m.stopping = true
@@ -244,8 +244,8 @@ func (m *Manager) writeMVConfig(listen string) error {
 	}
 	dist := m.findFrontendDist()
 	var sb strings.Builder
-	sb.WriteString("# 由 HA-Services-Deployer 自动生成——勿手工编辑。\n")
-	sb.WriteString("# Deployer 自启 MV 形态：配置自动推导，凭据由 MV 服务端持有并转发。\n")
+	sb.WriteString("# 由 HA-Cupbearer 自动生成——勿手工编辑。\n")
+	sb.WriteString("# Cupbearer 自启 MV 形态：配置自动推导，凭据由 MV 服务端持有并转发。\n")
 	sb.WriteString("version: \"1\"\n")
 	sb.WriteString("server:\n")
 	sb.WriteString("  listen: \"" + listen + "\"\n")
@@ -256,8 +256,8 @@ func (m *Manager) writeMVConfig(listen string) error {
 		sb.WriteString("  frontend_dist: \"./frontend/dist\"\n")
 	}
 	sb.WriteString("  loopback_session: true\n")
-	sb.WriteString("deployer:\n")
-	sb.WriteString("  base_url: \"" + m.deployerURL + "\"\n")
+	sb.WriteString("cupbearer:\n")
+	sb.WriteString("  base_url: \"" + m.cupbearerURL + "\"\n")
 	if m.deployToken != "" {
 		sb.WriteString("  token: \"" + m.deployToken + "\"\n")
 	}

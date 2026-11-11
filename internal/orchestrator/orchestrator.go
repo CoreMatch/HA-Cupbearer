@@ -1,4 +1,4 @@
-// Package orchestrator 是 Deployer 的裸金属编排核心。
+// Package orchestrator 是 Cupbearer 的裸金属编排核心。
 //
 // 语义要点：
 //   - 进程生命周期一律经 Tinyvisor（登记/重启/状态），编排器不常驻、

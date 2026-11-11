@@ -2,7 +2,7 @@ package orchestrator
 
 // 容器路径的一键触发——容器形态的默认交互。
 //
-// Deployer 的设计意图是"在不使用容器的情况下编排微服务"：裸金属编排
+// Cupbearer 的设计意图是"在不使用容器的情况下编排微服务"：裸金属编排
 //（版本目录+软链、Tinyvisor 重启、健康判定、回滚）是本体。容器路径在
 // 此之上提供两种形态，职责不同：
 //
@@ -90,7 +90,7 @@ func (o *Orchestrator) composeTemplateServices(ctx context.Context, path string)
 // 连接形态，见 knowledge/0016）；网络不存在则零变化。
 func renderComposeOverride(runID string, pinned map[string]string, attachInfra bool, allServices []string) string {
 	var b strings.Builder
-	b.WriteString("# 由 HA-Services-Deployer 一键触发自动生成（run " + runID + "）——勿手工编辑。\n")
+	b.WriteString("# 由 HA-Cupbearer 一键触发自动生成（run " + runID + "）——勿手工编辑。\n")
 	b.WriteString("# 镜像引用来自各项目 deploy-manifest.yaml 的已发布引用（digest 优先）。\n")
 	if attachInfra {
 		b.WriteString("# 共享基础设施网络 ha-infra 已在：主栈挂入后按服务名解析 mysql/redis。\n")

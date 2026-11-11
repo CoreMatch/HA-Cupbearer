@@ -282,7 +282,7 @@ func (o *Orchestrator) containerCreateOptions(m *manifest.Manifest, eff effectiv
 		RestartPolicy: "unless-stopped",
 		Labels: map[string]string{
 			docker.LabelProject:   m.Project,
-			docker.LabelManagedBy: "ha-services-deployer",
+			docker.LabelManagedBy: "ha-cupbearer",
 		},
 	}
 	ovPorts := o.cfg.Orchestration.Overrides[m.Project].Ports

@@ -1,4 +1,4 @@
-// Package bootstrap 是 Deployer 的首次运行初始化层：把一台全新机器变成
+// Package bootstrap 是 Cupbearer 的首次运行初始化层：把一台全新机器变成
 // 可运行的 HA 平台，不需要人手工敲 openssl、手工建库、手工拼 .env。
 //
 // 设计边界（与编排本体的关系）：
@@ -10,7 +10,7 @@
 //     运行记录里只出现掩码或指纹，绝不出现明文；
 //   - 断点续跑：每一步幂等 + 逐项落运行记录，重跑即续跑。
 //
-// 契约：HA-Contract docs/api/openapi/ha-services-deployer.yaml v1.3.0
+// 契约：HA-Contract docs/api/openapi/ha-cupbearer.yaml v1.3.0
 // （/api/v1/deploy/bootstrap/*）。
 package bootstrap
 
@@ -103,7 +103,7 @@ type PublicURLs struct {
 type InternalURLs struct {
 	HRPAuth  string `json:"hrpauth"`
 	YGG      string `json:"ygg"`
-	Deployer string `json:"deployer"`
+	Cupbearer string `json:"cupbearer"`
 }
 
 // SMTP 可选：全空时服务照常启动，只是不发信。
@@ -323,7 +323,7 @@ func (in *Inputs) Validate() []FieldError {
 	checkURL("public_urls.maintenanceview", in.PublicURLs.MaintenanceView, true)
 	checkURL("internal_urls.hrpauth", in.InternalURLs.HRPAuth, false)
 	checkURL("internal_urls.ygg", in.InternalURLs.YGG, false)
-	checkURL("internal_urls.deployer", in.InternalURLs.Deployer, false)
+	checkURL("internal_urls.cupbearer", in.InternalURLs.Cupbearer, false)
 
 	// 裸金属目标必须给出渲染输出（向导会用清单预填，但空值不能落盘）。
 	if in.Targets.Baremetal {

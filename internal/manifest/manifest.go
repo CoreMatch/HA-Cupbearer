@@ -8,7 +8,7 @@
 //     （enabled 恒为 false），仅为 schema 预留。
 //
 // 每个项目在自己仓库根目录放一份 deploy-manifest.yaml；无仓库归属的
-// 外部依赖（如 mysql/redis）声明放在 Deployer 仓的外部清单目录。
+// 外部依赖（如 mysql/redis）声明放在 Cupbearer 仓的外部清单目录。
 package manifest
 
 import (
@@ -204,7 +204,7 @@ type ArtifactSpec struct {
 }
 
 // GrailSpec 声明 Grail 上游：base_url + project + channel (+version/platform)。
-// 版本号是不透明标识符：Deployer 只取 latest（由 Grail 解析）或显式钉住，
+// 版本号是不透明标识符：Cupbearer 只取 latest（由 Grail 解析）或显式钉住，
 // 绝不解析或比较版本号数字（成熟度只看渠道）。
 type GrailSpec struct {
 	BaseURL  string `yaml:"base_url" json:"base_url"`

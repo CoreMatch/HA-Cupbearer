@@ -19,10 +19,10 @@ import (
 var ErrNotFound = errors.New("docker: not found")
 
 // LabelProject 是托管容器的项目标签键（孤儿识别依据）。
-const LabelProject = "ha-services-deployer.project"
+const LabelProject = "ha-cupbearer.project"
 
 // LabelManagedBy 标记"归本编排器管"的容器。
-const LabelManagedBy = "ha-services-deployer.managed-by"
+const LabelManagedBy = "ha-cupbearer.managed-by"
 
 // PortMapping 是一条端口发布：宿主口（可绑指定地址）→ 容器口。
 type PortMapping struct {

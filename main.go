@@ -74,12 +74,12 @@ func main() {
 		BinaryPath: cfg.MaintenanceView.BinaryPath,
 		Listen:     cfg.MaintenanceView.Listen,
 		WorkDir:    cfg.MaintenanceView.WorkDir,
-	}, deployerSelfURL(cfg.Server.Listen), creds.DeployToken)
+	}, cupbearerSelfURL(cfg.Server.Listen), creds.DeployToken)
 	mv.Start(context.Background())
 	defer mv.Stop()
 
 	router := server.NewRouter(cfg, orch, creds.DeployToken, boot, mvAdapter{mv})
-	log.Printf("HA Services Deployer listening on %s", cfg.Server.Listen)
+	log.Printf("HA Cupbearer listening on %s", cfg.Server.Listen)
 
 	// 优雅退出：信号到达时先停 HTTP 面，再经 defer 停受管的 MV。
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -94,11 +94,11 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
-	log.Printf("HA Services Deployer stopped")
+	log.Printf("HA Cupbearer stopped")
 }
 
-// deployerSelfURL 推导 MV 回连本服务的地址（listen 的端口 + 回环主机）。
-func deployerSelfURL(listen string) string {
+// cupbearerSelfURL 推导 MV 回连本服务的地址（listen 的端口 + 回环主机）。
+func cupbearerSelfURL(listen string) string {
 	port := "18080"
 	if _, p, err := net.SplitHostPort(listen); err == nil {
 		port = p

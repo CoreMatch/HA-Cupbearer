@@ -27,7 +27,7 @@ import (
 	"HA-Cupbearer/internal/manifest"
 )
 
-// grail 线上结构（与 HA-Contract grail.yaml 对齐；只取 Deployer 需要的字段）。
+// grail 线上结构（与 HA-Contract grail.yaml 对齐；只取 Cupbearer 需要的字段）。
 type grailSignature struct {
 	KeyID string `json:"key_id"`
 	Alg   string `json:"alg"`
