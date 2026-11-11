@@ -179,8 +179,8 @@ func (o *Orchestrator) TriggerContainerStack() (*Run, error) {
 			"以下项目声明了已发布镜像引用但 compose 模板（%s）无同名服务，未触发：%s",
 			composeFile, strings.Join(noService, ", ")))
 	}
-	// 模板有服务但清单无已发布引用的，按模板自身语义执行（如本地构建），
-	// 记入备注保证可见。
+	// 模板有服务但清单无已发布引用的，按模板自身声明的镜像执行
+	//（模板默认形态同样钉已发布 digest），记入备注保证可见。
 	var templateOnly []string
 	for s := range services {
 		if _, ok := refs[s]; !ok {
@@ -190,7 +190,7 @@ func (o *Orchestrator) TriggerContainerStack() (*Run, error) {
 	if len(templateOnly) > 0 {
 		sort.Strings(templateOnly)
 		run.Notes = append(run.Notes, fmt.Sprintf(
-			"以下 compose 服务无清单已发布镜像引用，按模板自身语义执行（未钉 digest）：%s",
+			"以下 compose 服务无清单已发布镜像引用，按模板自身声明的镜像执行（未经清单覆盖）：%s",
 			strings.Join(templateOnly, ", ")))
 	}
 	_ = o.store.SaveRun(run)
