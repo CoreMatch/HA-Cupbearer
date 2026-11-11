@@ -12,8 +12,8 @@
 #   - 各仓 Dockerfile 的 GO_VERSION 已与 go.mod 统一（1.26.10，2026-11-12），
 #     默认不需要任何 build args；确需临时覆盖时仍可经
 #     `docker compose build --build-arg GO_VERSION=...` 传入（ARG 可覆盖）。
-#   - ha-services-deployer 本地构建前须先把静态二进制放入上下文：
-#     CGO_ENABLED=0 go build -trimpath -o deploy/docker/hasd .
+#   - ha-cupbearer 本地构建前须先把静态二进制放入上下文：
+#     CGO_ENABLED=0 go build -trimpath -o deploy/docker/hacb .
 
 name: ha-platform
 
@@ -53,8 +53,8 @@ services:
     build:
       context: ../../../hrpauth/HA-WebUI-SDKHandler
 
-  ha-services-deployer:
-    image: ha/ha-services-deployer:${VERSION:-latest}
+  ha-cupbearer:
+    image: ha/ha-cupbearer:${VERSION:-latest}
     build:
       context: ..
 

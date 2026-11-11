@@ -1,7 +1,7 @@
 data/
 build/
 .trae/
-deploy/docker/hasd
+deploy/docker/hacb
 HA-Contract
 deploy/.env
 deploy/secrets/*

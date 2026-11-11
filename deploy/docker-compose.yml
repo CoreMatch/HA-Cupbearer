@@ -338,13 +338,13 @@ services:
         condition: service_healthy
     logging: *common-logging
 
-  ha-services-deployer:
+  ha-cupbearer:
     image: limeight/ha-services-deployer@sha256:c115937ca8c365fa018c4f32442455a0d9f88eb8193ac3835e8d2f505f43edf7
     restart: unless-stopped
     ports:
       # 内部下发服务：MaintenanceView 经 compose 网络访问，默认仅绑定回环。
-      # 需要远程下载产物时把 DEPLOYER_BIND 改为 0.0.0.0 并配置防火墙。
-      - "${DEPLOYER_BIND:-127.0.0.1}:${DEPLOYER_PORT:-18080}:18080"
+      # 需要远程下载产物时把 CUPBEARER_BIND 改为 0.0.0.0 并配置防火墙。
+      - "${CUPBEARER_BIND:-127.0.0.1}:${CUPBEARER_PORT:-18080}:18080"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:18080/healthz || exit 1"]
       interval: 30s
@@ -356,8 +356,8 @@ services:
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yaml
     volumes:
-      - ./config/ha-services-deployer.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
-      - deployer-data:/app/data
+      - ./config/ha-cupbearer.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
+      - cupbearer-data:/app/data
     logging: *common-logging
 
   ha-services-maintenance-view:
@@ -377,13 +377,13 @@ services:
       <<: *common-env
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yaml
-      DEPLOYER_URL: http://ha-services-deployer:18080
+      CUPBEARER_URL: http://ha-cupbearer:18080
       MAINTENANCEVIEW_PUBLIC_URL: ${MAINTENANCEVIEW_PUBLIC_URL:?missing MAINTENANCEVIEW_PUBLIC_URL - set it in deploy/.env (see deploy/.env.example)}
     volumes:
       - ./config/ha-services-maintenance-view.yaml.tmpl:/etc/ha/config.yaml.tmpl:ro
       - maintenanceview-data:/app/data
     depends_on:
-      ha-services-deployer:
+      ha-cupbearer:
         condition: service_healthy
     logging: *common-logging
 
@@ -430,5 +430,5 @@ volumes:
   sdkhandler-work:
   # SDKHandler 自动克隆前端模板的可写落点（默认 SDKHANDLER_TEMPLATE_DIR）。
   sdkhandler-template-src:
-  deployer-data:
+  cupbearer-data:
   maintenanceview-data:

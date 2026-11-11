@@ -7,7 +7,7 @@ RUN apk add --no-cache git
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ha-services-deployer .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ha-cupbearer .
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata gettext \
@@ -15,10 +15,10 @@ RUN apk add --no-cache ca-certificates tzdata gettext \
  && mkdir -p /app/data /app/storage /app/cache \
  && chown -R app:app /app
 WORKDIR /app
-COPY --from=builder /out/ha-services-deployer /app/ha-services-deployer
+COPY --from=builder /out/ha-cupbearer /app/ha-cupbearer
 COPY docker-entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 EXPOSE 18080
 USER app
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["/app/ha-services-deployer"]
+CMD ["/app/ha-cupbearer"]
