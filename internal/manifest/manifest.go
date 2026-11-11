@@ -250,6 +250,10 @@ type ImageSpec struct {
 	LocalPath  string `yaml:"local_path,omitempty" json:"local_path,omitempty"`
 	Repo       string `yaml:"repo,omitempty" json:"repo,omitempty"`
 	Tag        string `yaml:"tag,omitempty" json:"tag,omitempty"` // 支持 {service_version} 占位
+	// Digest 是镜像的不可变内容摘要（sha256:<64hex>）。source=registry 时
+	// 声明了 Digest 即以其为准——tag 可重打移动，digest 不会撒谎；Tag 仅作
+	// 可读别名并列。格式非法会被校验拒绝。
+	Digest string `yaml:"digest,omitempty" json:"digest,omitempty"`
 }
 
 // VolumeSpec 是一条卷映射：宿主侧 <容器根>/<HostRelative> → 容器内 Container。

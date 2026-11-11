@@ -25,6 +25,8 @@ var (
 
 	// validImageSources 是 container.image.source 的合法取值。
 	validImageSources = map[string]bool{"build": true, "local_image": true, "registry": true}
+	// imageDigestRe 是镜像内容摘要的合法形态（不可变引用）。
+	imageDigestRe = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 )
 
 // Report 是一次聚合校验的结果。Errors 为空即可执行（OK）；
@@ -101,6 +103,11 @@ func validateSingle(rep *Report, m *Manifest) {
 	}
 	if m.Container.Enabled {
 		rep.addf("%s: container.enabled 已退役（2026-11-08 全仓扫描确认无清单在用），请改用顶层 runtime 选择器", ctx)
+	}
+	// digest 是生效引用（不是信息性声明）：无论 runtime 选择哪一段，
+	// 声明了就必须形态合法，否则宁可拒绝装载。
+	if m.Container.Image.Digest != "" && !imageDigestRe.MatchString(m.Container.Image.Digest) {
+		rep.addf("%s: container.image.digest 必须为 sha256:<64 位十六进制>（当前 %q）", ctx, m.Container.Image.Digest)
 	}
 
 	if m.IsExternal() {
@@ -284,6 +291,12 @@ func validateContainer(rep *Report, m *Manifest) {
 	case "registry":
 		if c.Image.Repo == "" {
 			rep.addf("%s: container.image.repo 必填（registry 来源）", ctx)
+		}
+		if c.Image.Tag == "" && c.Image.Digest == "" {
+			rep.addf("%s: container.image.tag 与 digest 至少声明一个（registry 来源）", ctx)
+		}
+		if c.Image.Digest != "" && !imageDigestRe.MatchString(c.Image.Digest) {
+			rep.addf("%s: container.image.digest 必须为 sha256:<64 位十六进制>（当前 %q）", ctx, c.Image.Digest)
 		}
 	}
 
