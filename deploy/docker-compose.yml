@@ -361,7 +361,7 @@ services:
     logging: *common-logging
 
   ha-services-maintenance-view:
-    image: limeight/ha-services-maintenance-view@sha256:94145305fdd6c797fb7bdb227351d253086677bd8c52a58aead45e689de235d3
+    image: limeight/ha-services-maintenance-view@sha256:a28d5094d0c66a7e72d0d7443f8997deb38523c64cfb1ab41857b54a589f67a3
     restart: unless-stopped
     ports:
       # 运维面板（半成品、无鉴权）：默认仅绑定回环。
