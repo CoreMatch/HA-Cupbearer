@@ -6,6 +6,23 @@ type Config struct {
 	Storage       StorageConfig       `yaml:"storage" json:"storage"`
 	Manifest      ManifestConfig      `yaml:"manifest" json:"manifest"`
 	Orchestration OrchestrationConfig `yaml:"orchestration" json:"orchestration"`
+	// MaintenanceView 描述 Deployer 对运维面板的自动拉起与监督
+	//（config v3 引入；零值 = 全部默认，行为见 internal/mvmanager）。
+	MaintenanceView MaintenanceViewConfig `yaml:"maintenance_view" json:"maintenance_view"`
+}
+
+// MaintenanceViewConfig 自动拉起运维面板的配置。
+// Enabled 为 nil 时按启用处理（默认自动拉起；找不到二进制只告警不致命）。
+type MaintenanceViewConfig struct {
+	Enabled    *bool  `yaml:"enabled" json:"enabled,omitempty"`
+	BinaryPath string `yaml:"binary_path" json:"binary_path"` // 空 = 自动探测
+	Listen     string `yaml:"listen" json:"listen"`           // 默认 127.0.0.1:18081
+	WorkDir    string `yaml:"work_dir" json:"work_dir"`       // 默认 ./data/maintenance-view
+}
+
+// MVEnabled 报告是否启用 MV 自动拉起（nil = 启用）。
+func (c *Config) MVEnabled() bool {
+	return c.MaintenanceView.Enabled == nil || *c.MaintenanceView.Enabled
 }
 
 type ServerConfig struct {

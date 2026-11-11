@@ -41,6 +41,7 @@ type fakeDocker struct {
 	imageTags     map[string][]string // repo -> 标签（新→旧）
 	pulledRefs    []string            // Pull 调用记录（按序）
 	repoDigests   map[string][]string // ref -> RepoDigests（可预置以模拟漂移）
+	networks      map[string]bool     // 具名网络存在性（NetworkExists）
 
 	composeUpErr   error
 	composeUpOut   string
@@ -249,6 +250,12 @@ func (f *fakeDocker) ComposeUp(ctx context.Context, files []string) (string, err
 
 func (f *fakeDocker) ComposePs(ctx context.Context, files []string) (string, error) {
 	return f.composePsOut, nil
+}
+
+func (f *fakeDocker) NetworkExists(ctx context.Context, name string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.networks[name], nil
 }
 
 func (f *fakeDocker) ComposeServices(ctx context.Context, files []string) ([]string, error) {

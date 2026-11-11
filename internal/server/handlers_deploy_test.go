@@ -65,7 +65,7 @@ func startTinyvisorStub(t *testing.T, key string) *httptest.Server {
 func newDeployTestEnv(t *testing.T, orch *orchestrator.Orchestrator, cfg *models.Config) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	return NewRouter(cfg, orch, "test-deploy-token")
+	return NewRouter(cfg, orch, "test-deploy-token", nil, nil)
 }
 
 func buildOrchestrationEnv(t *testing.T) (*orchestrator.Orchestrator, *models.Config, int) {
@@ -200,7 +200,7 @@ func TestGetDeployPreflight(t *testing.T) {
 func TestGetDeployPreflightDisabled(t *testing.T) {
 	_, cfg, _ := buildOrchestrationEnv(t)
 	gin.SetMode(gin.TestMode)
-	router := NewRouter(cfg, nil, "")
+	router := NewRouter(cfg, nil, "", nil, nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/deploy/preflight", nil))
 	if w.Code != http.StatusServiceUnavailable {
