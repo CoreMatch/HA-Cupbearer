@@ -111,4 +111,4 @@ every template comment was checked against current code facts.
   [xref] internal/config/config.go:16 (v4), HA-Services-MaintenanceView
   [xref] internal/config/migrations.go:11 (v1).
 - This repository's own config-version anchor (locally verified):
-  internal/config/migrations.go:11 (v2).
+  internal/config/migrations.go:11 fp=10c5780e (v2).
