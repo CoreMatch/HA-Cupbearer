@@ -1,4 +1,4 @@
-# 0016 — First-Run Bootstrap Layer, MV Autostart, and Shared Infra (2026-11-12)
+# 0016 — First-Run Bootstrap Layer, MV Autostart, and Per-Path Infra (2026-11-12)
 
 ## Status
 
@@ -12,8 +12,8 @@ machine needed manual `openssl` secret generation, manual database/account
 creation, manual `.env` assembly, manual signing keys, and per-service config
 authoring before anything could run. The author ruled this gap closed:
 one-click initialization, with a wizard in MaintenanceView collecting only
-what no backend can derive, and MySQL/Redis launched as shared infrastructure
-consumed by BOTH deployment paths.
+what no backend can derive, and MySQL/Redis infrastructure standing per
+selected deployment path.
 
 ## Decision
 
@@ -23,7 +23,7 @@ Independent of `orchestration.enabled`; available whenever the Deployer runs.
 Contract: HA-Contract `docs/api/openapi/ha-services-deployer.yaml` v1.3.0
 (`/api/v1/deploy/bootstrap/*`). Steps, in order:
 
-1. **infra** — shared MySQL/Redis, one pair for both paths
+1. **infra** — MySQL/Redis, standing per selected deployment path
    (`internal/bootstrap/infra.go`):
    - detect → adopt → launch. Managed containers are `ha-infra-mysql-1` /
      `ha-infra-redis-1` from `deploy/infra.yml` (compose project `ha-infra`,
@@ -37,11 +37,14 @@ Contract: HA-Contract `docs/api/openapi/ha-services-deployer.yaml` v1.3.0
      managed container keeps the recorded port (changing ports would require
      recreating the container, and this layer never removes containers);
    - port conflicts are bind-tested up front and reported in plain language.
-   - Two address forms derive from the one fact: bare-metal processes
-     connect `127.0.0.1:<host port>`; compose services connect
-     `mysql:3306` / `redis:6379` via the `ha-infra` network (the container
-     trigger attaches the main stack when that network exists —
+   - Connection forms are reported per selected path (no cross-path "shared"
+     promise): bare-metal orchestration connects `127.0.0.1:<host port>`;
+     container orchestration connects `mysql:3306` / `redis:6379` via the
+     `ha-infra` network (the container trigger attaches the main stack when
+     that network exists —
      `internal/orchestrator/container_trigger.go::renderComposeOverride`).
+     Both forms address the same managed instance; a deployment picks one
+     path, and only that path's form is rendered into its configs.
 2. **secrets** — get-or-create all platform secrets
    (`internal/bootstrap/state.go::EnsureSecrets`): super client secret, five
    service client pairs' secrets, MANAGE_TOKEN, MCA_MAINTENANCE_TOKEN,
@@ -106,8 +109,8 @@ fingerprints, and a retry button (resume).
   start. Measured E2E (2026-11-12, clean environment): infra launched and
   health-waited; four DBs + app user created; keys generated; `.env` merged;
   nine bare-metal configs rendered with identical credential pairs both sides;
-  composed stack (published images) started healthy against the shared
-  `ha-infra` MySQL/Redis; super client issued a real token; all seven
+  composed stack (published images) started healthy against the `ha-infra`
+  MySQL/Redis (container-path connection form); super client issued a real token; all seven
   `oauth2_clients` rows seeded; winnerproxy `hasJoined` probe 204. Idempotent
   re-run: all steps skip/reuse; edited `.env` ports preserved with drift
   warnings. Mid-run kill: record stays `running`, re-run resumes. Port
@@ -125,7 +128,7 @@ fingerprints, and a retry button (resume).
 ## Evidence
 
 - `internal/bootstrap/engine.go::execute` — step pipeline and resume records.
-- `internal/bootstrap/infra.go::EnsureInfra` — shared infra semantics.
+- `internal/bootstrap/infra.go::EnsureInfra` — per-path infra semantics.
 - `internal/bootstrap/render.go::MergeEnvFile`, `::EnvForBaremetal` — merge
   and dual-form address derivation.
 - `internal/mvmanager/manager.go::Start` — reuse-or-manage decision.
