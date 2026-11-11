@@ -30,6 +30,7 @@ type fakeDocker struct {
 	infoErr       error
 	buildErr      error
 	createErr     error
+	pullErr       error
 	images        map[string]string // ref -> imageID
 	knownDigests  map[string]bool   // 仍存在的镜像摘要（可脱离标签独立存在）
 	containers    map[string]*docker.ContainerState
@@ -38,6 +39,8 @@ type fakeDocker struct {
 	removedImages []string
 	listManaged   []docker.ManagedContainer
 	imageTags     map[string][]string // repo -> 标签（新→旧）
+	pulledRefs    []string            // Pull 调用记录（按序）
+	repoDigests   map[string][]string // ref -> RepoDigests（可预置以模拟漂移）
 }
 
 func newFakeDocker() *fakeDocker {
@@ -46,6 +49,7 @@ func newFakeDocker() *fakeDocker {
 		knownDigests: map[string]bool{},
 		containers:   map[string]*docker.ContainerState{},
 		imageTags:    map[string][]string{},
+		repoDigests:  map[string][]string{},
 	}
 }
 
@@ -109,6 +113,42 @@ func (f *fakeDocker) LoadAndTag(ctx context.Context, tarball, tag string) error 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.addImage(tag)
+	return nil
+}
+
+func (f *fakeDocker) Pull(ctx context.Context, ref string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.pullErr != nil {
+		return f.pullErr
+	}
+	f.pulledRefs = append(f.pulledRefs, ref)
+	id := "sha256:img-" + ref
+	f.images[ref] = id
+	f.knownDigests[id] = true
+	// 未预置时默认"拉到的就是声明的"：RepoDigests 含引用本身。
+	if _, ok := f.repoDigests[ref]; !ok {
+		f.repoDigests[ref] = []string{ref}
+	}
+	return nil
+}
+
+func (f *fakeDocker) RepoDigests(ctx context.Context, ref string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.repoDigests[ref]...), nil
+}
+
+func (f *fakeDocker) Tag(ctx context.Context, src, dst string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id, ok := f.images[src]
+	if !ok {
+		return docker.ErrNotFound
+	}
+	f.images[dst] = id
+	repo, version, _ := strings.Cut(dst, ":")
+	f.imageTags[repo] = append([]string{version}, f.imageTags[repo]...)
 	return nil
 }
 
@@ -219,6 +259,17 @@ func (e *containerEnv) isHealthy() bool {
 
 func newContainerEnv(t *testing.T) *containerEnv {
 	t.Helper()
+	return newContainerEnvWithImage(t, `container:
+  image: { source: build, context: build }
+  volumes:
+    - { container: /data, host_relative: data }
+`)
+}
+
+// newContainerEnvWithImage 与 newContainerEnv 相同，但 container 段可替换
+//（registry 来源等场景用）。
+func newContainerEnvWithImage(t *testing.T, containerSection string) *containerEnv {
+	t.Helper()
 	base := t.TempDir()
 	scanRoot := filepath.Join(base, "scan")
 	repoDir := filepath.Join(scanRoot, "svc-a")
@@ -258,11 +309,8 @@ facts:
     http: { port_name: http, path: /healthz, expect_status: 200, timeout_seconds: 2, interval_seconds: 1, retries: 1 }
 baremetal:
   install: { root: %s }
-container:
-  image: { source: build, context: build }
-  volumes:
-    - { container: /data, host_relative: data }
-`, freePort(t), env.root)
+%s
+`, freePort(t), env.root, containerSection)
 	if err := os.WriteFile(filepath.Join(repoDir, "deploy-manifest.yaml"), []byte(manifestYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -786,5 +834,104 @@ func TestContainerPruneKeepsRecentAndActive(t *testing.T) {
 	}
 	if _, ok := env.fake.images["svc-a:1.0.0"]; !ok {
 		t.Fatal("active image tag must never be pruned")
+	}
+}
+
+// ---------- registry 来源（真实拉取 + digest 钉扎） ----------
+
+// registryImageSection 构造钉 digest 的 registry 镜像段。
+func registryImageSection(digest string) string {
+	return fmt.Sprintf(`container:
+  image:
+    source: registry
+    repo: limeight/ha-svc-a
+    tag: "1.0.0-deadbee"
+    digest: %q
+`, digest)
+}
+
+// 声明了 digest：拉取引用必须是 repo@sha256:...（digest 优先，不按 tag 拉），
+// 部署成功且运行记录钉住内容摘要。
+func TestContainerDeployRegistryPullByDigest(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("ab", 32)
+	env := newContainerEnvWithImage(t, registryImageSection(digest))
+
+	run := env.runDeploy(t)
+	res := run.Results["svc-a"]
+	if res.Outcome != OutcomeDeployed {
+		t.Fatalf("outcome = %s, detail = %s, steps = %+v", res.Outcome, res.Detail, res.Steps)
+	}
+	wantRef := "limeight/ha-svc-a@" + digest
+	if len(env.fake.pulledRefs) != 1 || env.fake.pulledRefs[0] != wantRef {
+		t.Fatalf("pull ref = %v, want exactly [%s] (digest-first, never tag)", env.fake.pulledRefs, wantRef)
+	}
+	if res.ActiveImageID == "" {
+		t.Fatal("run record must pin the image content digest")
+	}
+	// 编排标签照常落：<project>:<version> 指向拉到的内容。
+	if id, ok := env.fake.images["svc-a:1.0.0"]; !ok || id != env.fake.images[wantRef] {
+		t.Fatalf("orchestration tag must point at the pulled content: %v", env.fake.images)
+	}
+}
+
+// digest 漂移：拉到的内容摘要与清单声明不一致 → 响亮失败，绝不建容器。
+func TestContainerDeployRegistryDigestMismatchRefuses(t *testing.T) {
+	declared := "sha256:" + strings.Repeat("ab", 32)
+	env := newContainerEnvWithImage(t, registryImageSection(declared))
+	// 预置"registry 侧内容已被换"：拉取引用的 RepoDigests 指向别的摘要。
+	pullRef := "limeight/ha-svc-a@" + declared
+	env.fake.repoDigests[pullRef] = []string{"limeight/ha-svc-a@sha256:" + strings.Repeat("cd", 32)}
+
+	run := env.runDeploy(t)
+	res := run.Results["svc-a"]
+	if res.Outcome != OutcomeFailed {
+		t.Fatalf("digest mismatch must fail the deploy, got %s", res.Outcome)
+	}
+	if !strings.Contains(res.Detail, "does not match") {
+		t.Fatalf("detail must say the digest does not match: %s", res.Detail)
+	}
+	if len(env.fake.creates) != 0 {
+		t.Fatalf("no container may be created on digest mismatch, got %d", len(env.fake.creates))
+	}
+}
+
+// 只声明 tag（schema 允许、不推荐）：按 repo:tag 拉，无 digest 对照。
+func TestContainerDeployRegistryTagOnlyFallback(t *testing.T) {
+	env := newContainerEnvWithImage(t, `container:
+  image:
+    source: registry
+    repo: limeight/ha-svc-a
+    tag: "1.0.0-deadbee"
+`)
+	run := env.runDeploy(t)
+	res := run.Results["svc-a"]
+	if res.Outcome != OutcomeDeployed {
+		t.Fatalf("outcome = %s, detail = %s", res.Outcome, res.Detail)
+	}
+	if len(env.fake.pulledRefs) != 1 || env.fake.pulledRefs[0] != "limeight/ha-svc-a:1.0.0-deadbee" {
+		t.Fatalf("pull ref = %v, want tag fallback", env.fake.pulledRefs)
+	}
+}
+
+// 拉取失败：错误原样带进运行记录（真实驱动侧另有分类，见 docker 包测试）。
+func TestContainerDeployRegistryPullErrorRecorded(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("ab", 32)
+	env := newContainerEnvWithImage(t, registryImageSection(digest))
+	env.fake.pullErr = errors.New("registry 认证失败（401）：拉取需要先 docker login")
+
+	run := env.runDeploy(t)
+	res := run.Results["svc-a"]
+	if res.Outcome != OutcomeFailed {
+		t.Fatalf("pull failure must fail the deploy, got %s", res.Outcome)
+	}
+	joined := ""
+	for _, s := range res.Steps {
+		joined += s.Detail + "\n"
+	}
+	if !strings.Contains(joined, "docker login") {
+		t.Fatalf("steps must carry the readable pull error: %s", joined)
+	}
+	if len(env.fake.creates) != 0 {
+		t.Fatalf("no container may be created when pull fails, got %d", len(env.fake.creates))
 	}
 }

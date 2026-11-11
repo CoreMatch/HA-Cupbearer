@@ -7,7 +7,7 @@ self-hosting and maintenance of this service.
 
 - It does **not** define external behavior. The version-manifest contract is
   owned by [HA-Contract](https://github.com/CoreMatch/HA-Contract) at
-  `/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md`.
+  `/home/lnb/Desktop/HA/maintanance/HA-Services-Deployer/knowledge/0006-version-manifest.md`.
   API shapes, field semantics, and validation rules are normative there, not
   here.
 - When an entry here conflicts with HA-Contract, **fix the entry, not the
@@ -31,3 +31,5 @@ self-hosting and maintenance of this service.
 | [0008](0008-local-e2e-orchestration-verification.md) | Local end-to-end orchestration verification | 2026-11-08 local closed loop on real MaintenanceView binaries: deploy → up-to-date re-run → upgrade → rollback with binary-fingerprint proof; records what was real vs. local_path placeholder. |
 | [0009](0009-config-template-code-reconciliation.md) | Config template ↔ code reconciliation | 2026-11-08 full field-by-field audit of deploy/config/*.yaml.tmpl vs each service's config loader: versions, dead/missing fields, ${VAR} injection, stale comments; fixes (missing template mounts, haskinlib seed chain, version markers) and the deliberately-open items. |
 | [0010](0010-avalon-cascade-no-helper-measured-boundary.md) | Avalon + Cascade no-helper form: measured boundary | 2026-11-08 isolated deployment of the no-helper form: what works (supervision, control plane, edge room-snapshot flow), what cannot work by design (game start, `/v1/health`, Cascade `/readyz`), what unlocks game start, and the first-mover deployment pitfalls. |
+| [0011](0011-container-orchestration-minimal-loop.md) | Container orchestration: design and first closed loop | 2026-11-08 container runtime opened: `runtime` selector, image-as-version, digest-pinned rollback, orphan reconcile; `registry` source still schema-only at that point. |
+| [0012](0012-registry-image-source-live-pull.md) | Registry image source: live pull, digest-first pinning, host-login auth | 2026-11-11 `registry` source really pulls at deploy time: `repo@sha256:…` digest-first, post-pull reconciliation fails loud, auth follows the host docker login, pull errors classified 401/403/404/429; measured by pulling a published image back into a live container. |
