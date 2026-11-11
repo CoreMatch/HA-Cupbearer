@@ -24,7 +24,7 @@ Record the verified shape:
   - `storage.artifacts_root: "./data/artifacts"`
   - `manifest.path: "./data/manifest.json"`
 - **No sample service config is shipped.** The README quick start describes
-  the auto-generated defaults instead (`README.md:L51-L63 fp=cac45034 ~ Quick start`);
+  the auto-generated defaults instead (`README.md:L51-L63 fp=d24c0322 ~ Quick start`);
   `examples/manifest.v1.json` is a manifest sample, not a service config.
 - **Migration framework at version "1" with an empty chain.**
   `ConfigVersion = "1"` (`internal/config/migrations.go::ConfigVersion`);
