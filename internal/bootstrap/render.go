@@ -36,9 +36,9 @@ var envVarRefRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // 变量集逐项对齐；内部发现地址不在 .env——compose 在各服务 environment
 // 里直接注入，既有接线不变）。facts 为 nil 时按输入原值推导。
 //
-// DB/Redis 连接形态（作者边界：同一份事实推导两种地址）：基础设施是受管
-// 容器时，容器链路连服务名+容器口（mysql:3306 / redis:6379，经 ha-infra
-// 网络解析）；外部实例时沿用调用方给的地址。
+// DB/Redis 连接形态按所选部署路径各自成立：基础设施是受管容器时，容器
+// 编排一侧用服务名+容器口（经 ha-infra 网络解析），裸金属一侧用
+// 127.0.0.1+宿主发布端口；外部实例时沿用调用方给的地址。
 func EnvForContainer(in *Inputs, secrets map[string]string, facts *InfraFacts) map[string]string {
 	dbHost, dbPort := dbEndpoint(in, facts, true)
 	redisHost, redisPort := redisEndpoint(in, facts, true)
@@ -170,7 +170,8 @@ func EnvForBaremetal(in *Inputs, secrets map[string]string, service, secretsDirA
 	return env
 }
 
-// dbEndpoint 按目标链路推导 MySQL 连接地址（同一份事实的两种形态）。
+// dbEndpoint 按目标链路推导 MySQL 连接地址（裸金属 = 宿主地址+发布端口，
+// 容器 = 服务名+容器口）。
 // container=true 返回容器网络形态（受管容器 = 服务名:容器口）；
 // false 返回宿主形态（受管容器 = 127.0.0.1:发布口；外部实例 = 输入地址）。
 func dbEndpoint(in *Inputs, facts *InfraFacts, container bool) (string, string) {
@@ -327,6 +328,16 @@ func ListTemplates(templateDir string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// ConventionalConfigFile 是服务的配置文件名约定（清单 facts.config 缺席时
+// 的回落值）：WinnerProxy 用 .yml 后缀（其 main.go configFileName 事实），
+// 其余服务用 config.yaml。
+func ConventionalConfigFile(service string) string {
+	if service == "winnerproxy" {
+		return "config.yml"
+	}
+	return "config.yaml"
 }
 
 func uniqueStrings(in []string) []string {

@@ -330,7 +330,7 @@ func (e *Engine) execute(ctx context.Context, run *Run, in *Inputs) {
 		mutate(func() { run.Notes = append(run.Notes, note) })
 	}
 
-	// 0. 基础设施：探测/接管/一键拉起 MySQL 与 Redis（两条链路共用一份）。
+	// 0. 基础设施：探测/接管/一键拉起 MySQL 与 Redis（按所选路径各自成立）。
 	// 派生的管理口凭据与连接事实写回 in，供后续建库与配置渲染消费。
 	var facts *InfraFacts
 	if e.dk != nil {
@@ -341,10 +341,7 @@ func (e *Engine) execute(ctx context.Context, run *Run, in *Inputs) {
 			return
 		}
 		facts = f
-		setStep(StepInfra, StepOK, fmt.Sprintf(
-			"MySQL：%s（%s，裸金属连 %s，容器连 %s）。Redis：%s（%s，裸金属连 %s，容器连 %s）",
-			f.MySQL.Mode, f.MySQL.Detail, f.MySQL.BaremetalAddress, f.MySQL.ComposeAddress,
-			f.Redis.Mode, f.Redis.Detail, f.Redis.BaremetalAddress, f.Redis.ComposeAddress))
+		setStep(StepInfra, StepOK, infraStepDetail(f, in.Targets))
 	} else {
 		setStep(StepInfra, StepSkipped, "未装配容器运行时，跳过基础设施拉起（使用输入给定的既有 MySQL/Redis）")
 	}
@@ -587,6 +584,25 @@ func snapshotRun(run *Run) *Run {
 	}
 	clone.Notes = append([]string(nil), run.Notes...)
 	return &clone
+}
+
+// infraStepDetail 按所选部署路径报告连接形态（各路径各自成立，不做
+// "跨路径共用"表述）：选裸金属报宿主地址，选容器报 compose 服务名，
+// 两者都选则分别列出。
+func infraStepDetail(f *InfraFacts, tg Targets) string {
+	addr := func(inst InfraInstance) string {
+		switch {
+		case tg.Baremetal && tg.Container:
+			return fmt.Sprintf("裸金属编排连 %s；容器编排连 %s", inst.BaremetalAddress, inst.ComposeAddress)
+		case tg.Container:
+			return fmt.Sprintf("容器编排连 %s（宿主发布口 %s 供本机工具）", inst.ComposeAddress, inst.BaremetalAddress)
+		default:
+			return fmt.Sprintf("裸金属编排连 %s", inst.BaremetalAddress)
+		}
+	}
+	return fmt.Sprintf("MySQL：%s（%s，%s）。Redis：%s（%s，%s）",
+		f.MySQL.Mode, f.MySQL.Detail, addr(f.MySQL),
+		f.Redis.Mode, f.Redis.Detail, addr(f.Redis))
 }
 
 // --- 辅助 ---

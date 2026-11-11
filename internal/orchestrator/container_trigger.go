@@ -48,7 +48,7 @@ func (o *Orchestrator) composeFilePath() string {
 }
 
 // publishedImageRefs 提取全部清单中已发布的 registry 镜像引用
-//（digest 优先，见 registryPullRef）。清单 container 段承载"要触发
+// （digest 优先，见 registryPullRef）。清单 container 段承载"要触发
 // 什么"：只有 source=registry 是已发布引用（build/local_image 是本地
 // 来源，不属于一键触发的消费范围）。
 func publishedImageRefs(ms []*manifest.Manifest) map[string]string {
@@ -85,9 +85,9 @@ func (o *Orchestrator) composeTemplateServices(ctx context.Context, path string)
 // 其余接线（env/配置模板/端口/依赖）沿用模板——模板是整套容器形态的
 // 事实来源，清单只贡献镜像引用。
 //
-// attachInfra=true 时（共享基础设施网络 ha-infra 存在）：把主栈全部服务
-// 挂入该网络，容器链路即可按服务名解析共用的 mysql/redis（同一份基础
-// 设施的两种地址形态之一，见 knowledge/0015）；网络不存在则零变化。
+// attachInfra=true 时（基础设施网络 ha-infra 存在）：把主栈挂入该网络，
+// 容器编排一侧即可按服务名解析 mysql/redis（基础设施归 compose 一侧的
+// 连接形态，见 knowledge/0016）；网络不存在则零变化。
 func renderComposeOverride(runID string, pinned map[string]string, attachInfra bool, allServices []string) string {
 	var b strings.Builder
 	b.WriteString("# 由 HA-Services-Deployer 一键触发自动生成（run " + runID + "）——勿手工编辑。\n")
@@ -262,7 +262,7 @@ func (o *Orchestrator) executeContainerTrigger(run *Run, composeFile string, pin
 		return
 	}
 	if attachInfra {
-		run.Notes = append(run.Notes, "共享基础设施网络 ha-infra 存在：主栈已挂入（容器链路按服务名解析 mysql/redis）")
+		run.Notes = append(run.Notes, "基础设施网络 ha-infra 存在：主栈已挂入（容器编排按服务名解析 mysql/redis）")
 	}
 	allServices := make([]string, 0, len(services))
 	for s := range services {

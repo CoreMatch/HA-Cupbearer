@@ -104,6 +104,36 @@ func (h *Handler) GetBootstrapStatus(c *gin.Context) {
 
 	templates, _ := bootstrap.ListTemplates(bootstrap.DefaultTemplateDir)
 
+	// 裸金属渲染输出的预填：清单在场时按 安装根+facts.config 路径 推导；
+	// 否则只给配置文件名约定（输出根由向导里的人填）。
+	configFiles := map[string]string{}
+	outputs := map[string]string{}
+	for _, tmpl := range templates {
+		configFiles[tmpl] = bootstrap.ConventionalConfigFile(tmpl)
+	}
+	if h.orch != nil {
+		if ms, _ := h.orch.Load(); len(ms) > 0 {
+			byProject := map[string]int{}
+			for i, m := range ms {
+				byProject[m.Project] = i
+			}
+			for svc := range configFiles {
+				idx, ok := byProject[svc]
+				if !ok {
+					continue
+				}
+				m := ms[idx]
+				if len(m.Facts.Config) > 0 && m.Facts.Config[0].Path != "" {
+					configFiles[svc] = m.Facts.Config[0].Path
+				}
+				root := m.Baremetal.Install.Root
+				if root != "" && root != "unknown" {
+					outputs[svc] = root + "/" + configFiles[svc]
+				}
+			}
+		}
+	}
+
 	// 基础设施现状（只读探测）：向导据此决定"一键拉起"按钮是否出现。
 	var probeIn bootstrap.Inputs
 	probeIn.Prepare()
@@ -146,6 +176,8 @@ func (h *Handler) GetBootstrapStatus(c *gin.Context) {
 					"mca": bootstrap.DefaultMCADB,
 				},
 				"app_db_user": bootstrap.DefaultAppDBUser,
+				"config_files": configFiles,
+				"baremetal_outputs": outputs,
 			},
 			"maintenance_view": mv,
 		},
