@@ -101,15 +101,36 @@ Key rules:
   `ci_release` 已实现但未启用。将来启用发布时资产按硬约定命名：
   `<项目名>-linux-amd64` + `<项目名>-linux-amd64.sha256`。
 
-## Container runtime (opt-in)
+## Container path (default interaction: one-click trigger)
 
-`runtime: container`（或 `overrides.<p>.runtime: container`）把项目切到容器
-编排：镜像即版本（标签 `<project>:<service_version>`），版本切换 = 同名容器
-重建，监督由 docker `--restart unless-stopped` 负责（容器项目不触碰
-Tinyvisor）。健康探测与冒烟断言打在发布的宿主口上，语义不变。带托管标签
-但项目已不在清单中的孤儿容器**默认只报不删**
-（`orchestration.container.orphan_policy: report | remove`）。
-设计与边界：`knowledge/0011-container-orchestration-minimal-loop.md`。
+**定位**：Deployer 的设计意图是"在不使用容器的情况下编排微服务"——裸金属
+编排（版本目录+软链、Tinyvisor 重启、健康判定、回滚）是本体。容器路径在
+此之上提供两种形态，职责不同：
+
+1. **一键触发（容器路径的默认交互）**：
+   `POST /api/v1/deploy/container/trigger`（X-Deploy-Token，fail-closed，
+   单飞约束与部署/回滚共享）。编排器按各项目清单 `container` 段已发布的
+   镜像引用（digest 优先：`repo@sha256:<manifest list digest>`；仅声明 tag
+   时 `repo:tag`）生成 compose override，叠加在平台 compose 模板上执行
+   `docker compose up -d`，然后把结果**如实回报**（运行类型
+   `container-trigger`，经 `GET /api/v1/deploy/runs/:id` 查询）。整套容器
+   生命周期（创建、网络、健康检查、重启策略）由 compose 承担，编排器在这
+   条路径上不做逐容器的创建编排、健康轮询或回滚。模板位置由
+   `orchestration.container.compose_file` 指定（默认
+   `deploy/docker-compose.yml`）：模板承载 env/配置模板等整套接线，清单只
+   贡献镜像引用；清单声明了已发布引用但模板无同名服务的、以及模板有服务
+   但清单无已发布引用的，都记入运行备注，不静默。
+2. **容器级管理（已实现的可选能力，保留）**：`runtime: container`
+   （或 `overrides.<p>.runtime: container`）把单项目切到容器流水线：
+   镜像即版本（标签 `<project>:<service_version>`），版本切换 = 同名容器
+   重建，监督由 docker `--restart unless-stopped` 负责（容器项目不触碰
+   Tinyvisor）。健康探测与冒烟断言打在发布的宿主口上，语义不变。带托管
+   标签但项目已不在清单中的孤儿容器**默认只报不删**
+   （`orchestration.container.orphan_policy: report | remove`）。
+   设计与边界：`knowledge/0011-container-orchestration-minimal-loop.md`；
+   定位决策记录：`knowledge/0014-container-path-trigger-first-positioning.md`。
+
+以下为容器级管理（可选能力）的细节。
 
 Runtime 选择与 docker 端点：
 
@@ -206,7 +227,9 @@ Authoritative deployment facts for the Deployer itself live in
 This repository hosts the Compose template for the whole HA platform under
 `deploy/` (build contexts point at the sibling service repositories). This
 section covers deployment usage only; API/manifest contracts live in
-HA-Contract and are not repeated here.
+HA-Contract and are not repeated here. 一键触发
+（`POST /api/v1/deploy/container/trigger`）消费的就是这份模板：按清单已
+发布镜像引用生成 override 叠加其上，模板自身的 env/配置接线原样生效。
 
 ```
 deploy/

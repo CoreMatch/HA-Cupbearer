@@ -332,3 +332,40 @@ func (h *Handler) PostDeployRollback(c *gin.Context) {
 		"data":    run,
 	})
 }
+
+// PostDeployContainerTrigger 一键触发整套容器编排（容器路径的默认交互）：
+// 按清单已发布镜像引用生成 override，叠加平台 compose 模板执行
+// `docker compose up -d`，结果如实记入运行记录。编排器在此路径不做
+// 逐容器管理（那是 runtime=container 的可选能力）。
+func (h *Handler) PostDeployContainerTrigger(c *gin.Context) {
+	run, err := h.orch.TriggerContainerStack()
+	if err != nil {
+		if errors.Is(err, orchestrator.ErrRunInProgress) {
+			c.JSON(http.StatusConflict, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+		var verr *orchestrator.ErrValidation
+		if errors.As(err, &verr) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "manifest validation failed; trigger refused",
+				"data":    gin.H{"errors": verr.Errors},
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"success": true,
+		"message": "container trigger started",
+		"data":    run,
+	})
+}

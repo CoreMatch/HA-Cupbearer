@@ -88,6 +88,16 @@ type Driver interface {
 	ImageTags(ctx context.Context, repo string) ([]string, error)
 	// RemoveImage 删除镜像标签；被占用时返回错误由调用方记录。
 	RemoveImage(ctx context.Context, ref string) error
+	// ComposeUp 以给定 compose 文件序列执行 `docker compose up -d`，
+	// 返回合并输出。一键触发容器编排的执行动作：整套生命周期由
+	// compose 承担，调用方只触发与回报结果。
+	ComposeUp(ctx context.Context, files []string) (string, error)
+	// ComposePs 返回同一文件序列下的 `docker compose ps` 输出（状态快照）。
+	ComposePs(ctx context.Context, files []string) (string, error)
+	// ComposeServices 返回 compose 文件序列声明的服务名列表
+	//（`docker compose config --services`）。服务发现以 compose 自身为
+	// 权威，不在编排器侧重新解析 compose YAML（锚点/别名/插值等边界）。
+	ComposeServices(ctx context.Context, files []string) ([]string, error)
 }
 
 // CLI 经 docker 命令行实现的 Driver。
@@ -385,4 +395,56 @@ func (c *CLI) RemoveImage(ctx context.Context, ref string) error {
 		return nil
 	}
 	return err
+}
+
+// composeArgs 组装 compose 子命令的公共参数（-f 序列保持调用方顺序，
+// 后面的文件覆盖前面的，override 必须排在模板之后）。
+func (c *CLI) composeArgs(files []string, sub ...string) []string {
+	args := []string{"compose"}
+	for _, f := range files {
+		args = append(args, "-f", f)
+	}
+	return append(args, sub...)
+}
+
+// ComposeUp 执行 `docker compose -f ... up -d` 并返回合并输出
+//（stderr 常含进度信息，出错时一并给出以便如实回报）。
+func (c *CLI) ComposeUp(ctx context.Context, files []string) (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := c.cmd(ctx, c.composeArgs(files, "up", "-d")...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	out := strings.TrimSpace(stdout.String())
+	if errOut := strings.TrimSpace(stderr.String()); errOut != "" {
+		if out != "" {
+			out += "\n"
+		}
+		out += errOut
+	}
+	if err != nil {
+		return out, fmt.Errorf("docker compose up: %v", err)
+	}
+	return out, nil
+}
+
+// ComposePs 返回 `docker compose -f ... ps` 的状态快照文本。
+func (c *CLI) ComposePs(ctx context.Context, files []string) (string, error) {
+	return c.run(ctx, c.composeArgs(files, "ps")...)
+}
+
+// ComposeServices 返回 compose 声明的服务名（每行一个）。以 compose
+// 自身为权威：锚点/别名、变量插值、include 等边界全部由它处理。
+func (c *CLI) ComposeServices(ctx context.Context, files []string) ([]string, error) {
+	out, err := c.run(ctx, c.composeArgs(files, "config", "--services")...)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			names = append(names, line)
+		}
+	}
+	return names, nil
 }

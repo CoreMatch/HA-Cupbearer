@@ -56,6 +56,11 @@ type ContainerRuntimeConfig struct {
 	// OrphanPolicy 处置带本编排器标签但清单中已不存在的项目容器：
 	// report（默认，只报不删）| remove。
 	OrphanPolicy string `yaml:"orphan_policy" json:"orphan_policy"`
+	// ComposeFile 是容器路径"一键触发"使用的平台 compose 模板位置
+	//（相对路径按进程工作目录解析）。模板承载 env/配置模板等整套接线，
+	// 触发时编排器按清单里已发布的镜像引用生成 override 叠加其上。
+	// 留空时默认 deploy/docker-compose.yml。
+	ComposeFile string `yaml:"compose_file" json:"compose_file"`
 }
 
 type TinyvisorTargetConfig struct {

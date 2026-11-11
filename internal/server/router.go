@@ -49,6 +49,7 @@ func NewRouter(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken 
 			deploy.GET("/runs/:id", handler.GetDeployRun)
 			deploy.POST("/run", handler.deployAuth, handler.PostDeployRun)
 			deploy.POST("/rollback", handler.deployAuth, handler.PostDeployRollback)
+			deploy.POST("/container/trigger", handler.deployAuth, handler.PostDeployContainerTrigger)
 		}
 	}
 
