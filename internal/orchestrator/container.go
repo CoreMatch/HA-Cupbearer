@@ -21,7 +21,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,6 +38,30 @@ const containerKeepImages = 5
 // containerImageRef 给出容器项目的镜像标签：<project>:<service_version>。
 func containerImageRef(m *manifest.Manifest) string {
 	return m.Project + ":" + m.ServiceVersion
+}
+
+// registryPullRef 组装 registry 拉取引用：声明了 digest 一律
+// repo@sha256:...（digest 优先，tag 可变、只作可读别名）；
+// 仅有 tag 时退回 repo:tag。
+func registryPullRef(img manifest.ImageSpec) string {
+	if img.Digest != "" {
+		return img.Repo + "@" + img.Digest
+	}
+	return img.Repo + ":" + img.Tag
+}
+
+// containsRepoDigest 判断实际摘要列表是否包含声明的 digest。
+// 只比 sha256 值本身，忽略 repo 前缀拼写差异（如 docker.io/ 归一化）。
+func containsRepoDigest(digests []string, want string) bool {
+	want = strings.ToLower(strings.TrimPrefix(strings.ToLower(want), "sha256:"))
+	for _, d := range digests {
+		if _, value, ok := strings.Cut(d, "@"); ok {
+			if strings.TrimPrefix(strings.ToLower(value), "sha256:") == want {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // shortID 截取容器/镜像 ID 用于可读记录。
@@ -116,11 +139,42 @@ func (o *Orchestrator) deployContainer(ctx context.Context, run *Run, m *manifes
 			return
 		}
 	case "registry":
-		err := errors.New("registry 来源本轮未实现运行时拉取（仅 schema 与校验）")
-		addStep("image", err, m.Container.Image.Repo)
-		res.Outcome = OutcomeFailed
-		res.Detail = "registry image source not implemented"
-		return
+		// digest 优先：声明了 digest 就按 repo@sha256:... 拉——拉取阶段即
+		// 钉死内容，绝不"按 tag 拉完再比对"（tag 可变，比对发生在内容已
+		// 落地之后，是事后补救）。仅声明 tag（schema 允许、不推荐）才按
+		// tag 拉。鉴权沿用宿主 docker 登录态，编排器不持有任何凭据。
+		ref := registryPullRef(m.Container.Image)
+		if err := o.docker.Pull(ctx, ref); !addStep("image", err, "pull "+ref) {
+			res.Outcome = OutcomeFailed
+			res.Detail = "registry image pull failed"
+			return
+		}
+		// 对照校验：拉到的镜像实际 registry 摘要必须包含清单声明的 digest，
+		// 不一致响亮失败、绝不继续——防止清单漂移或 registry 侧内容被换。
+		if m.Container.Image.Digest != "" {
+			digests, derr := o.docker.RepoDigests(ctx, ref)
+			if derr != nil {
+				addStep("image", derr, "inspect repo digests of "+ref)
+				res.Outcome = OutcomeFailed
+				res.Detail = "pulled image digest verification failed"
+				return
+			}
+			if !containsRepoDigest(digests, m.Container.Image.Digest) {
+				err := fmt.Errorf("image digest mismatch: manifest declares %s, pulled image repo digests are %v — refusing to continue",
+					m.Container.Image.Digest, digests)
+				addStep("image", err, "verify digest of "+ref)
+				res.Outcome = OutcomeFailed
+				res.Detail = "pulled image digest does not match manifest declaration"
+				return
+			}
+		}
+		// 打本地编排标签 <project>:<version>（镜像即版本，与 build/local_image
+		// 同语义；后续幂等/回滚/清理都走这个标签与它背后的摘要）。
+		if err := o.docker.Tag(ctx, ref, tag); !addStep("image", err, fmt.Sprintf("tag %s -> %s", ref, tag)) {
+			res.Outcome = OutcomeFailed
+			res.Detail = "registry image tagging failed"
+			return
+		}
 	default:
 		addStep("image", fmt.Errorf("unknown image source %q", m.Container.Image.Source), "")
 		res.Outcome = OutcomeFailed

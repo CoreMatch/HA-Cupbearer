@@ -69,6 +69,13 @@ type Driver interface {
 	Build(ctx context.Context, tag, contextDir, dockerfile string) error
 	// LoadAndTag 装载 docker-save 压缩包并打成目标标签。
 	LoadAndTag(ctx context.Context, tarball, tag string) error
+	// Pull 从 registry 拉取镜像（ref 支持 repo@sha256:... 与 repo:tag）。
+	// 鉴权完全沿用宿主 docker 登录态，本层不持有、不注入任何凭据。
+	Pull(ctx context.Context, ref string) error
+	// RepoDigests 返回镜像所属的 registry 摘要列表（对照清单声明的证据）。
+	RepoDigests(ctx context.Context, ref string) ([]string, error)
+	// Tag 给镜像打新标签（按 digest 拉取后打编排标签用）。
+	Tag(ctx context.Context, src, dst string) error
 	Create(ctx context.Context, opts CreateOptions) (string, error)
 	Start(ctx context.Context, name string) error
 	// Remove 强制删除（含停止）；容器不存在视为成功（幂等）。
@@ -212,6 +219,62 @@ func (c *CLI) LoadAndTag(ctx context.Context, tarball, tag string) error {
 		return nil
 	}
 	_, err = c.run(ctx, "tag", loaded, tag)
+	return err
+}
+
+// Pull 从 registry 拉取镜像。鉴权完全沿用宿主 docker 的登录态
+//（~/.docker/config.json 或其配置的 credential helper；rootless 下即
+// 编排器运行用户自己的登录）——本层不持有、不注入、不写死任何凭据。
+// 失败按原因分类给出可读错误：认证失败/无权限/引用不存在/限流/网络，
+// 各是各的问题，绝不吞成一句 "pull failed"。
+func (c *CLI) Pull(ctx context.Context, ref string) error {
+	if _, err := c.run(ctx, "pull", ref); err != nil {
+		return ClassifyPullError(ref, err)
+	}
+	return nil
+}
+
+// ClassifyPullError 把 registry 返回的原始错误映射为可读原因。
+// 导出供测试与上层报告复用。
+func ClassifyPullError(ref string, err error) error {
+	if err == nil {
+		return nil
+	}
+	lower := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(lower, "unauthorized") || strings.Contains(lower, "authentication required"):
+		return fmt.Errorf("registry 认证失败（401）：拉取 %s 需要先 docker login，或登录态已过期: %w", ref, err)
+	case strings.Contains(lower, "pull access denied") ||
+		strings.Contains(lower, "requested access to the resource is denied") ||
+		strings.Contains(lower, "forbidden"):
+		return fmt.Errorf("没有权限拉取 %s（403）：命名空间或仓库不对当前账号开放: %w", ref, err)
+	case strings.Contains(lower, "manifest unknown") || strings.Contains(lower, "not found"):
+		return fmt.Errorf("registry 中不存在 %s（404）：repo/tag/digest 有一个不对: %w", ref, err)
+	case strings.Contains(lower, "toomanyrequests") || strings.Contains(lower, "rate limit"):
+		return fmt.Errorf("registry 限流（429）：拉取 %s 被拒，稍后重试或改用已认证身份: %w", ref, err)
+	}
+	return fmt.Errorf("拉取 %s 失败: %w", ref, err)
+}
+
+// RepoDigests 返回镜像所属的 registry 摘要列表（repo@sha256:... 形态）。
+// 本地构建/加载的镜像没有 registry 摘要，返回空列表而非错误。
+func (c *CLI) RepoDigests(ctx context.Context, ref string) ([]string, error) {
+	out, err := c.run(ctx, "image", "inspect", "--format", "{{range .RepoDigests}}{{println .}}{{end}}", ref)
+	if err != nil {
+		return nil, err
+	}
+	var digests []string
+	for _, line := range strings.Split(out, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			digests = append(digests, line)
+		}
+	}
+	return digests, nil
+}
+
+// Tag 给镜像打新标签。
+func (c *CLI) Tag(ctx context.Context, src, dst string) error {
+	_, err := c.run(ctx, "tag", src, dst)
 	return err
 }
 

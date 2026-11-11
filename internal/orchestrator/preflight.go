@@ -247,8 +247,10 @@ func (o *Orchestrator) checkContainerImage(m *manifest.Manifest, report *Preflig
 		report.add(CheckResult{Project: m.Project, Name: "image", OK: true,
 			Detail: fmt.Sprintf("local_image %s with checksum sidecar present", img.LocalPath)})
 	case "registry":
-		report.add(CheckResult{Project: m.Project, Name: "image", Level: LevelBlocker,
-			Detail: fmt.Sprintf("registry source %q: authenticated pull not implemented this phase (schema/validation only)", img.Repo)})
+		// 拉取发生在部署时（鉴权沿用宿主 docker 登录态）；preflight 只
+		// 确认引用形态——repo 与 tag/digest 的完备性由 schema 校验强制。
+		report.add(CheckResult{Project: m.Project, Name: "image", OK: true,
+			Detail: fmt.Sprintf("registry source %s: pull at deploy time, auth follows host docker login", registryPullRef(m.Container.Image))})
 	default:
 		report.add(CheckResult{Project: m.Project, Name: "image", Level: LevelBlocker,
 			Detail: fmt.Sprintf("unknown image source %q", img.Source)})
