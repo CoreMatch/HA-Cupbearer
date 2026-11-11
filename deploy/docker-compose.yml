@@ -1,14 +1,19 @@
 # HA 平台容器编排模板
 #
-# 用法:
+# 默认用法（拉取已发布镜像，不构建）:
 #   cp .env.example .env && 编辑 .env (数据库/Redis 地址、密钥、上游 URL)
-#   docker compose up -d --build
+#   docker compose up -d
 #
 # 说明:
+#   - 默认形态消费已发布到 Docker Hub 的多架构镜像（limeight/ha-*，
+#     linux/amd64 + linux/arm64），image 一律钉 manifest list digest
+#     （repo@sha256:...）——与各仓 deploy-manifest.yaml 的
+#     container.image.digest 同源；镜像重发布后两处须同步更新。
+#   - 本地构建是显式可选路径（无网络/改代码验证时用），不在默认步骤内:
+#     docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 #   - MySQL / Redis 不在本编排内启动, 通过 .env 中的 DB_* / REDIS_* 指向外部实例。
 #   - 每个服务的 YAML 配置由 deploy/config/*.yaml.tmpl 渲染而成, 容器启动时
 #     用 envsubst 把 ${VAR} 替换为环境变量值, 因此所有可变项都由 .env 控制。
-#   - 镜像在本地构建, tag 统一为 ha/<服务名>:<版本>。
 
 name: ha-platform
 
@@ -33,9 +38,7 @@ x-common-logging: &common-logging
 
 services:
   hrpauth:
-    build:
-      context: ../../../hrpauth/HRPAuth
-    image: ha/hrpauth:${VERSION:-latest}
+    image: limeight/ha-hrpauth@sha256:b279c9a020b89ec834437387b506ec3c0743675754538784207cc0ea86e36695
     restart: unless-stopped
     ports:
       - "${HRPAUTH_PORT:-2778}:2778"
@@ -94,9 +97,7 @@ services:
     logging: *common-logging
 
   hrpauth-yggdrasil-api:
-    build:
-      context: ../../../hrpauth/HRPAuth-Yggdrasil-API
-    image: ha/hrpauth-yggdrasil-api:${VERSION:-latest}
+    image: limeight/ha-hrpauth-yggdrasil-api@sha256:9c78eddf66dd493aa2cdd77193ba52e5e85fcb378edeec45d0425e5a551c2f59
     restart: unless-stopped
     ports:
       - "${YGG_PORT:-2770}:2770"
@@ -136,9 +137,7 @@ services:
     logging: *common-logging
 
   haskinlib:
-    build:
-      context: ../../../hrpauth/HASkinLib
-    image: ha/haskinlib:${VERSION:-latest}
+    image: limeight/ha-haskinlib@sha256:56350ff11f45f183f147c60ab147305856f13142c648a9960388670d287c7f40
     restart: unless-stopped
     ports:
       - "${HASKINLIB_PORT:-2701}:2701"
@@ -170,9 +169,7 @@ services:
     logging: *common-logging
 
   haskinproxy:
-    build:
-      context: ../../../hrpauth/HASkinProxy
-    image: ha/haskinproxy:${VERSION:-latest}
+    image: limeight/ha-haskinproxy@sha256:c086ffaf549c34482fa70a5b90067e39df0f92fd872610ffe60ae5419685a6b2
     restart: unless-stopped
     ports:
       - "${HASKINPROXY_PORT:-2702}:2702"
@@ -208,9 +205,7 @@ services:
     logging: *common-logging
 
   winnerproxy:
-    build:
-      context: ../../../hrpauth/WinnerProxy
-    image: ha/winnerproxy:${VERSION:-latest}
+    image: limeight/ha-winnerproxy@sha256:51795ffad54b8bb90e36470ae857f0414c26eb64185e7562aa999eecbda0b7bc
     restart: unless-stopped
     ports:
       - "${WINNERPROXY_PORT:-2777}:2777"
@@ -254,9 +249,7 @@ services:
     logging: *common-logging
 
   mca-server:
-    build:
-      context: ../../../matchcore/MatchCoreArena-Server
-    image: ha/mca-server:${VERSION:-latest}
+    image: limeight/ha-mca-server@sha256:4b45285991bdcc7a1ff1f76d744575be62531afdc1ba2736beeafb023893b99c
     restart: unless-stopped
     ports:
       - "${MCA_SERVER_PORT:-9178}:9178"
@@ -301,9 +294,7 @@ services:
     logging: *common-logging
 
   ha-webui-sdkhandler:
-    build:
-      context: ../../../hrpauth/HA-WebUI-SDKHandler
-    image: ha/ha-webui-sdkhandler:${VERSION:-latest}
+    image: limeight/ha-webui-sdkhandler@sha256:bd4137705d8e62a3718ecd24db6f444880cf9a5973f1cfa62b27484cab5d7f8f
     restart: unless-stopped
     ports:
       # 内部构建服务：默认仅绑定回环，服务间调用走 compose 网络，无需宿主暴露。
@@ -345,9 +336,7 @@ services:
     logging: *common-logging
 
   ha-services-deployer:
-    build:
-      context: ..
-    image: ha/ha-services-deployer:${VERSION:-latest}
+    image: limeight/ha-services-deployer@sha256:eadc826514a15220e202e86df09fe57255fa6f25bfdd71a7207c35ad0bbc4341
     restart: unless-stopped
     ports:
       # 内部下发服务：MaintenanceView 经 compose 网络访问，默认仅绑定回环。
@@ -369,9 +358,7 @@ services:
     logging: *common-logging
 
   ha-services-maintenance-view:
-    build:
-      context: ../../../maintanance/HA-Services-MaintenanceView
-    image: ha/ha-services-maintenance-view:${VERSION:-latest}
+    image: limeight/ha-services-maintenance-view@sha256:52ee8d3d1a0af9695f815870b0f25ecbef2e9141c8e65735585750ed414b908a
     restart: unless-stopped
     ports:
       # 运维面板（半成品、无鉴权）：默认仅绑定回环。

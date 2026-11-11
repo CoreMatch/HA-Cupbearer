@@ -15,17 +15,27 @@ in `README.md`.
 Record the arrangement and its boundary:
 
 - Location: `deploy/` — `docker-compose.yml` (Compose project
-  `ha-platform`), `.env.example`, `config/*.yaml.tmpl` per service,
+  `ha-platform`), `docker-compose.build.yml` (explicit opt-in local-build
+  override), `.env.example`, `config/*.yaml.tmpl` per service,
   `nginx-sdkhandler-artifacts.conf` (SPA fallback for the optional `webui`
   profile), `secrets/` (signature keys), `sdkhandler-template/`.
-- **Build contexts point at sibling repositories** next to this one
-  (`deploy/docker-compose.yml`: `../HRPAuth`, `../HRPAuth-Yggdrasil-API`,
-  `../HASkinLib`, `../HASkinProxy`, `../WinnerProxy`,
-  `../MatchCoreArena-Server`, `../HA-WebUI-SDKHandler`,
-  `../HA-Services-Deployer`, `../HA-Services-MaintenanceView`). That is why
-  the orchestration lives here rather than in each service repo: a single
-  checkout level where all siblings exist. A full platform build therefore
-  requires all sibling repos checked out side by side.
+- **Default form consumes published images, digest-pinned.** Every service
+  in `deploy/docker-compose.yml` pins its published multi-arch image
+  (`limeight/ha-*`) by manifest-list digest (`repo@sha256:...`) — the same
+  digests the service repos' `deploy-manifest.yaml` pin
+  (`deploy/docker-compose.yml (field: services)`). No `build:` sections in
+  the default template; `docker compose up -d` pulls.
+- **Local builds are an explicit opt-in path** in
+  `deploy/docker-compose.build.yml`: it overrides `image` back to local
+  tags and re-adds build contexts pointing at the sibling repositories
+  (`deploy/docker-compose.build.yml (field: context: ../)` —
+  `../HRPAuth`, `../HRPAuth-Yggdrasil-API`, `../HASkinLib`,
+  `../HASkinProxy`, `../WinnerProxy`, `../MatchCoreArena-Server`,
+  `../HA-WebUI-SDKHandler`, `../HA-Services-Deployer`,
+  `../HA-Services-MaintenanceView`). That is why the orchestration lives
+  here rather than in each service repo: a single checkout level where all
+  siblings exist. A full platform **build** therefore requires all sibling
+  repos checked out side by side; the default pull form does not.
 - **MySQL and Redis are external.** The template does not start them;
   services read `DB_*` / `REDIS_*` from `.env`
   (`deploy/docker-compose.yml (field: x-common-env)`,
@@ -43,9 +53,9 @@ Record the arrangement and its boundary:
 
 ## Consequences
 
-- This repo has a dual role (service + platform orchestration home). Anyone
-  cloning only this repo cannot build the platform; the sibling repos are
-  mandatory.
+- This repo has a dual role (service + platform orchestration home). The
+  default pull form runs from this repo alone; anyone wanting to **build**
+  the platform locally must check out the sibling repos too.
 - Port defaults in compose: hrpauth 2778, yggdrasil-api 2770, haskinlib
   2701, haskinproxy 2702, winnerproxy 2777, mca-server 9178 listen on all
   interfaces; sdkhandler 2704/2705, deployer 18080, and maintenance-view
@@ -59,10 +69,11 @@ Record the arrangement and its boundary:
 
 ## Evidence
 
-- `deploy/docker-compose.yml` — full orchestration; service list and build
-  contexts (`deploy/docker-compose.yml (field: services)`,
-  `deploy/docker-compose.yml (field: context: ../)`); external DB/Redis note
+- `deploy/docker-compose.yml` — full orchestration; published-image pins
+  (`deploy/docker-compose.yml (field: services)`); external DB/Redis note
   (`deploy/docker-compose.yml (field: MySQL / Redis)`).
+- `deploy/docker-compose.build.yml` — opt-in local-build override
+  (`deploy/docker-compose.build.yml (field: context: ../)`).
 - `deploy/.env.example` — deployment-scoped values.
 - `deploy/config/*.yaml.tmpl` — per-service config templates.
 - `deploy/nginx-sdkhandler-artifacts.conf` — SPA fallback for the `webui` profile.

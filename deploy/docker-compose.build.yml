@@ -1,0 +1,73 @@
+# 本地构建形态（显式可选路径，不是默认用法）
+#
+# 默认形态消费已发布镜像（docker-compose.yml 钉 manifest list digest）。
+# 本文件把各服务切回本地构建：无网络、或要改代码后立即验证时使用。
+#
+# 用法（必须与主模板叠加，且带 --build）:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# 说明:
+#   - image 覆盖主模板的 digest 钉选，tag 统一 ha/<服务名>:${VERSION:-latest}；
+#   - build context 指向兄弟仓库检出（相对本目录）。
+#   - GO_VERSION 构建参数：2026-11-06 依赖漏洞补丁把多仓 go.mod 提到
+#     go 1.26.10，而兄弟仓 Dockerfile 钉的 GO_VERSION 基础镜像较旧；官方
+#     golang 镜像 GOTOOLCHAIN=local 不自动升级工具链，必须在此以
+#     build.args 覆盖（与多架构发布构建同一修法，见 knowledge/0013）。
+#   - ha-services-deployer 本地构建前须先把静态二进制放入上下文：
+#     CGO_ENABLED=0 go build -trimpath -o deploy/docker/hasd .
+
+name: ha-platform
+
+services:
+  hrpauth:
+    image: ha/hrpauth:${VERSION:-latest}
+    build:
+      context: ../../../hrpauth/HRPAuth
+      args: { GO_VERSION: "1.26.10" }
+
+  hrpauth-yggdrasil-api:
+    image: ha/hrpauth-yggdrasil-api:${VERSION:-latest}
+    build:
+      context: ../../../hrpauth/HRPAuth-Yggdrasil-API
+      args: { GO_VERSION: "1.26.10" }
+
+  haskinlib:
+    image: ha/haskinlib:${VERSION:-latest}
+    build:
+      context: ../../../hrpauth/HASkinLib
+      args: { GO_VERSION: "1.26.10" }
+
+  haskinproxy:
+    image: ha/haskinproxy:${VERSION:-latest}
+    build:
+      context: ../../../hrpauth/HASkinProxy
+      args: { GO_VERSION: "1.26.10" }
+
+  winnerproxy:
+    image: ha/winnerproxy:${VERSION:-latest}
+    build:
+      context: ../../../hrpauth/WinnerProxy
+      args: { GO_VERSION: "1.26.10" }
+
+  mca-server:
+    image: ha/mca-server:${VERSION:-latest}
+    build:
+      context: ../../../matchcore/MatchCoreArena-Server
+      args: { GO_VERSION: "1.26.10" }
+
+  ha-webui-sdkhandler:
+    image: ha/ha-webui-sdkhandler:${VERSION:-latest}
+    build:
+      context: ../../../hrpauth/HA-WebUI-SDKHandler
+      args: { GO_VERSION: "1.26.10" }
+
+  ha-services-deployer:
+    image: ha/ha-services-deployer:${VERSION:-latest}
+    build:
+      context: ..
+      args: { GO_VERSION: "1.26.0" }
+
+  ha-services-maintenance-view:
+    image: ha/ha-services-maintenance-view:${VERSION:-latest}
+    build:
+      context: ../../../maintanance/HA-Services-MaintenanceView

@@ -233,7 +233,8 @@ HA-Contract and are not repeated here. 一键触发
 
 ```
 deploy/
-├── docker-compose.yml                  # platform orchestration template
+├── docker-compose.yml                  # platform orchestration template (published images, digest-pinned)
+├── docker-compose.build.yml            # explicit opt-in override: local builds instead of published images
 ├── .env.example                        # deployment-scoped values (copy to .env)
 ├── config/*.yaml.tmpl                  # per-service config templates (envsubst)
 ├── nginx-sdkhandler-artifacts.conf     # SPA-fallback config for the webui profile
@@ -241,12 +242,22 @@ deploy/
 └── sdkhandler-template/                # optional pre-placed frontend template (read-only)
 ```
 
-Quick start:
+Quick start (default: pull the published images — no build):
 
 ```bash
 cd deploy
 cp .env.example .env   # fill in MySQL/Redis addresses, upstream URLs, secrets
-docker compose up -d --build
+docker compose up -d
+```
+
+`docker-compose.yml` pins every service to its published multi-arch image
+(`limeight/ha-*`) by **manifest-list digest** (`repo@sha256:...`), the same
+digests the service repos' `deploy-manifest.yaml` pin; when an image is
+republished, update both places. Local building is an explicit opt-in path
+(no network, or verifying local code changes), never the default:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 ### Services, ports, and exposure
