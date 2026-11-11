@@ -68,9 +68,10 @@ container projects. (`internal/orchestrator/preflight.go::checkContainerImage`)
 
 ## Boundaries / open items
 
-- The declared digest must be the registry **manifest digest** as pushed
-  (single-arch images: the digest recorded at push time). A multi-arch
-  manifest list carries a list digest differing from per-arch image digests;
-  re-verify the reconciliation rule before publishing multi-arch.
+- The declared digest must be the registry **manifest digest** as pushed.
+  Since 2026-11-11 the ten images are multi-arch manifest lists and the
+  manifests pin the **list** digest; pulling `repo@sha256:<list digest>`
+  yields an image record whose `RepoDigests` contains that list digest, so
+  the reconciliation rule above passes unchanged — measured, see 0013.
 - Private-registry support inherits whatever the host docker login supports;
   there is deliberately no per-registry credential plumbing in this service.
