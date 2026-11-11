@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"HA-Services-Deployer/internal/manifest"
+	"HA-Cupbearer/internal/manifest"
 )
 
 // groupOrder 是分组推进顺序。依赖拓扑序优先于分组序（见 Plan），

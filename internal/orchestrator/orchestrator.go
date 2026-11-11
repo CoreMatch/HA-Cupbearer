@@ -25,12 +25,12 @@ import (
 	"sync"
 	"time"
 
-	"HA-Services-Deployer/internal/artifact"
-	"HA-Services-Deployer/internal/config"
-	"HA-Services-Deployer/internal/docker"
-	"HA-Services-Deployer/internal/manifest"
-	"HA-Services-Deployer/internal/models"
-	"HA-Services-Deployer/internal/tinyvisor"
+	"HA-Cupbearer/internal/artifact"
+	"HA-Cupbearer/internal/config"
+	"HA-Cupbearer/internal/docker"
+	"HA-Cupbearer/internal/manifest"
+	"HA-Cupbearer/internal/models"
+	"HA-Cupbearer/internal/tinyvisor"
 )
 
 // ErrRunInProgress 表示已有运行中的编排任务（单飞）。

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"HA-Services-Deployer/internal/docker"
+	"HA-Cupbearer/internal/docker"
 
 	_ "github.com/go-sql-driver/mysql"
 )

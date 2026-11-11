@@ -1,4 +1,4 @@
-module HA-Services-Deployer
+module HA-Cupbearer
 
 go 1.26.10
 

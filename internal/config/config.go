@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"HA-Services-Deployer/internal/models"
+	"HA-Cupbearer/internal/models"
 
 	"github.com/goccy/go-yaml"
 )

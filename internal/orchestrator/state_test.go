@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"HA-Services-Deployer/internal/models"
+	"HA-Cupbearer/internal/models"
 )
 
 func newTestOrchestrator(dir string) *Orchestrator {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"HA-Services-Deployer/internal/manifest"
+	"HA-Cupbearer/internal/manifest"
 )
 
 func localPathManifest(t *testing.T, content []byte) (*manifest.Manifest, string) {

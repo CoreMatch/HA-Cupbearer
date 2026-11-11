@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"HA-Services-Deployer/internal/manifest"
+	"HA-Cupbearer/internal/manifest"
 )
 
 func TestSwitchSymlinkAtomic(t *testing.T) {

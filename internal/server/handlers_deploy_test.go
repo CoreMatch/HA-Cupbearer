@@ -18,10 +18,10 @@ import (
 	"strings"
 	"testing"
 
-	"HA-Services-Deployer/internal/config"
-	"HA-Services-Deployer/internal/manifest"
-	"HA-Services-Deployer/internal/models"
-	"HA-Services-Deployer/internal/orchestrator"
+	"HA-Cupbearer/internal/config"
+	"HA-Cupbearer/internal/manifest"
+	"HA-Cupbearer/internal/models"
+	"HA-Cupbearer/internal/orchestrator"
 
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-yaml"

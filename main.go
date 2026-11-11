@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"HA-Services-Deployer/internal/bootstrap"
-	"HA-Services-Deployer/internal/config"
-	"HA-Services-Deployer/internal/docker"
-	"HA-Services-Deployer/internal/mvmanager"
-	"HA-Services-Deployer/internal/orchestrator"
-	"HA-Services-Deployer/internal/server"
+	"HA-Cupbearer/internal/bootstrap"
+	"HA-Cupbearer/internal/config"
+	"HA-Cupbearer/internal/docker"
+	"HA-Cupbearer/internal/mvmanager"
+	"HA-Cupbearer/internal/orchestrator"
+	"HA-Cupbearer/internal/server"
 )
 
 func main() {

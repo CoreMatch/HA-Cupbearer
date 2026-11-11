@@ -18,9 +18,9 @@ import (
 	"sync"
 	"testing"
 
-	"HA-Services-Deployer/internal/config"
-	"HA-Services-Deployer/internal/docker"
-	"HA-Services-Deployer/internal/models"
+	"HA-Cupbearer/internal/config"
+	"HA-Cupbearer/internal/docker"
+	"HA-Cupbearer/internal/models"
 )
 
 // ---------- fake 驱动 ----------

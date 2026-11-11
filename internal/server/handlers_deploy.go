@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"HA-Services-Deployer/internal/orchestrator"
+	"HA-Cupbearer/internal/orchestrator"
 
 	"github.com/gin-gonic/gin"
 )

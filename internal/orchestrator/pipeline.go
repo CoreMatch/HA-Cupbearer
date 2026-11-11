@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"HA-Services-Deployer/internal/manifest"
-	"HA-Services-Deployer/internal/probe"
-	"HA-Services-Deployer/internal/tinyvisor"
+	"HA-Cupbearer/internal/manifest"
+	"HA-Cupbearer/internal/probe"
+	"HA-Cupbearer/internal/tinyvisor"
 )
 
 // effective 解析项目在当下部署上下文中的执行参数：

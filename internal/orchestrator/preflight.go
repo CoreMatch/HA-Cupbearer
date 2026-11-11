@@ -27,9 +27,9 @@ import (
 	"syscall"
 	"time"
 
-	"HA-Services-Deployer/internal/artifact"
-	"HA-Services-Deployer/internal/manifest"
-	"HA-Services-Deployer/internal/tinyvisor"
+	"HA-Cupbearer/internal/artifact"
+	"HA-Cupbearer/internal/manifest"
+	"HA-Cupbearer/internal/tinyvisor"
 )
 
 // preflightTimeout 限制一次前置检查的总耗时（单项探测本身都是短超时，此为兜底）。

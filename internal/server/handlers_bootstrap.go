@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"HA-Services-Deployer/internal/bootstrap"
+	"HA-Cupbearer/internal/bootstrap"
 
 	"github.com/gin-gonic/gin"
 )

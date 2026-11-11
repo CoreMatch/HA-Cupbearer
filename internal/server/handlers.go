@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"HA-Services-Deployer/internal/models"
+	"HA-Cupbearer/internal/models"
 	"github.com/gin-gonic/gin"
 )
 

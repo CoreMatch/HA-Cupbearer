@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"HA-Services-Deployer/internal/manifest"
+	"HA-Cupbearer/internal/manifest"
 )
 
 // OutcomeTriggered 表示该项目经一键触发交给 compose 执行（结果如实回报）。

@@ -15,8 +15,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"HA-Services-Deployer/internal/config"
-	"HA-Services-Deployer/internal/manifest"
+	"HA-Cupbearer/internal/config"
+	"HA-Cupbearer/internal/manifest"
 )
 
 // fakeGrail 是一个进程内的假 Grail 节点：真实的 Ed25519 根密钥与项目

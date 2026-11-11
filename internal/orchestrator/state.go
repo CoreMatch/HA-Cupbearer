@@ -34,8 +34,8 @@ type GlobalState struct {
 }
 
 type ProjectState struct {
-	Outcome       string    `json:"outcome"`
-	ActiveVersion string    `json:"active_version,omitempty"`
+	Outcome       string `json:"outcome"`
+	ActiveVersion string `json:"active_version,omitempty"`
 	// ImageID 是容器项目实际运行的镜像内容摘要（sha256:...）：
 	// 回滚的唯一可定位依据；标签只是人类可读的名字，标签会撒谎，摘要不会。
 	ImageID   string    `json:"image_id,omitempty"`
@@ -190,11 +190,11 @@ func (s *Store) ImageIDForVersion(project, version string) string {
 
 // RunSummary 是运行列表的精简视图。
 type RunSummary struct {
-	ID         string     `json:"id"`
-	Type       string     `json:"type"`
-	State      string     `json:"state"`
-	StartedAt  time.Time  `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ID         string         `json:"id"`
+	Type       string         `json:"type"`
+	State      string         `json:"state"`
+	StartedAt  time.Time      `json:"started_at"`
+	FinishedAt *time.Time     `json:"finished_at,omitempty"`
 	Outcomes   map[string]int `json:"outcomes"`
 }
 

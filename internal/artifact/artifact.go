@@ -26,8 +26,8 @@ import (
 	"syscall"
 	"time"
 
-	"HA-Services-Deployer/internal/config"
-	"HA-Services-Deployer/internal/manifest"
+	"HA-Cupbearer/internal/config"
+	"HA-Cupbearer/internal/manifest"
 )
 
 // spaceMargin 是在产物大小之外额外要求的余量（文件系统开销），避免贴着上限写满。

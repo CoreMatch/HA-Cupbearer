@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"os"
 
-	"HA-Services-Deployer/internal/bootstrap"
-	"HA-Services-Deployer/internal/models"
-	"HA-Services-Deployer/internal/orchestrator"
+	"HA-Cupbearer/internal/bootstrap"
+	"HA-Cupbearer/internal/models"
+	"HA-Cupbearer/internal/orchestrator"
 
 	"github.com/gin-gonic/gin"
 )

@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"HA-Services-Deployer/internal/manifest"
+	"HA-Cupbearer/internal/manifest"
 )
 
 const (

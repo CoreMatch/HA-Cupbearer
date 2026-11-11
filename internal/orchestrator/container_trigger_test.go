@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"HA-Services-Deployer/internal/config"
-	"HA-Services-Deployer/internal/models"
+	"HA-Cupbearer/internal/config"
+	"HA-Cupbearer/internal/models"
 )
 
 // 一键触发（容器路径默认交互）的行为验证。触发只负责：按清单已发布

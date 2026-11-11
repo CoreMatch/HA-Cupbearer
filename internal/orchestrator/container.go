@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"HA-Services-Deployer/internal/docker"
-	"HA-Services-Deployer/internal/manifest"
+	"HA-Cupbearer/internal/docker"
+	"HA-Cupbearer/internal/manifest"
 )
 
 // containerKeepImages 是镜像保留数（类比 keep_releases）。

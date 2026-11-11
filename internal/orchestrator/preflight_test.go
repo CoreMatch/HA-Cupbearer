@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"HA-Services-Deployer/internal/config"
-	"HA-Services-Deployer/internal/manifest"
-	"HA-Services-Deployer/internal/models"
+	"HA-Cupbearer/internal/config"
+	"HA-Cupbearer/internal/manifest"
+	"HA-Cupbearer/internal/models"
 
 	"github.com/goccy/go-yaml"
 )

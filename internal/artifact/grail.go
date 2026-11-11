@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
-	"HA-Services-Deployer/internal/config"
-	"HA-Services-Deployer/internal/manifest"
+	"HA-Cupbearer/internal/config"
+	"HA-Cupbearer/internal/manifest"
 )
 
 // grail 线上结构（与 HA-Contract grail.yaml 对齐；只取 Deployer 需要的字段）。
