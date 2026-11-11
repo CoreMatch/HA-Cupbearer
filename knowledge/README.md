@@ -1,4 +1,4 @@
-# HA-Services-Deployer Knowledge Base
+# HA-Cupbearer Knowledge Base
 
 ## Positioning
 
@@ -7,7 +7,7 @@ self-hosting and maintenance of this service.
 
 - It does **not** define external behavior. The version-manifest contract is
   owned by [HA-Contract](https://github.com/CoreMatch/HA-Contract) at
-  `/home/lnb/Desktop/HA/maintanance/HA-Services-Deployer/knowledge/0006-version-manifest.md`.
+  `/home/lnb/Desktop/HA/maintanance/HA-Cupbearer/knowledge/0006-version-manifest.md`.
   API shapes, field semantics, and validation rules are normative there, not
   here.
 - When an entry here conflicts with HA-Contract, **fix the entry, not the
@@ -26,7 +26,7 @@ self-hosting and maintenance of this service.
 | [0003](0003-sha256-not-verified-server-side.md) | sha256 is not verified server-side (unimplemented) | Manifest `sha256`/`size_bytes` are format-checked only; the server never hashes served files, so content identity is currently a consumer-side duty. |
 | [0004](0004-configuration-shape.md) | Configuration shape | `config.yaml` is auto-generated on first start from `DefaultConfig` (`:18080`, `./data/artifacts`, `./data/manifest.json`); no sample service config is shipped; compose deployments use the same port. |
 | [0005](0005-platform-compose-template-lives-here.md) | Platform compose template lives here | `deploy/` hosts the whole-platform Compose orchestration whose build contexts point at sibling repos; it is deployment tooling, not part of the service's API surface. |
-| [0006](0006-version-manifest.md) | HA Services Deployer version manifest | Migrated back from HA-Contract `docs/dev/HA-Services-Deployer/version-manifest.md` on 2026-11-07 (source: HA-Contract@bab2a05). |
+| [0006](0006-version-manifest.md) | HA Cupbearer version manifest | Migrated back from HA-Contract `docs/dev/HA-Cupbearer/version-manifest.md` on 2026-11-07 (source: HA-Contract@bab2a05). |
 | [0007](0007-bare-metal-orchestration-scope.md) | Bare-metal orchestration scope and boundary | Config v2 adds an opt-in orchestrator that drives Tinyvisor (artifact → version dir + symlink → script upsert → restart → health → optional post-deploy smoke → rollback), gated by a one-pass graded preflight (blockers refuse with the full report); `manager != tinyvisor` projects are foreign/read-only; mutating endpoints are token-gated fail-closed. |
 | [0008](0008-local-e2e-orchestration-verification.md) | Local end-to-end orchestration verification | 2026-11-08 local closed loop on real MaintenanceView binaries: deploy → up-to-date re-run → upgrade → rollback with binary-fingerprint proof; records what was real vs. local_path placeholder. |
 | [0009](0009-config-template-code-reconciliation.md) | Config template ↔ code reconciliation | 2026-11-08 full field-by-field audit of deploy/config/*.yaml.tmpl vs each service's config loader: versions, dead/missing fields, ${VAR} injection, stale comments; fixes (missing template mounts, haskinlib seed chain, version markers) and the deliberately-open items. |
@@ -36,3 +36,5 @@ self-hosting and maintenance of this service.
 | [0013](0013-multiarch-images-manifest-list-digests.md) | Multi-arch publication: ten images as manifest lists, pinned by list digest | 2026-11-11 all ten images rebuilt as amd64+arm64 manifest lists (arm64 under QEMU); manifests pin the list digest; pull-and-reconcile verified on both platforms; `go.mod`-vs-`GO_VERSION` toolchain pitfall recorded. |
 | [0014](0014-container-path-trigger-first-positioning.md) | Container path positioning: trigger-first interaction, management kept as opt-in capability | 2026-11-11 author directive: bare-metal is the body; container default interaction is the one-click trigger (`POST /api/v1/deploy/container/trigger`, manifest refs → compose override → `compose up -d` → truthful report); implemented container-level management kept as opt-in, nothing removed. |
 | [0015](0015-go-toolchain-unified-1.26.10.md) | Go toolchain unified at 1.26.10: no per-service GO_VERSION overrides | 2026-11-12 all Dockerfiles default to 1.26.10 (aligned with go.mod; CI already follows go.mod); compose build override lost its per-service GO_VERSION exceptions; ten images rebuilt with zero build args, six byte-identical (reproducibility proven), four re-pinned in manifests + compose template. |
+| [0016](0016-first-run-bootstrap-mv-autostart-infra.md) | First-run bootstrap layer, MV autostart, per-path infra | 2026-11-12 one-click first-run initialization (credentials, databases, keys, rendered configs) with the MV auto-start supervised form and per-path MySQL/Redis infra semantics; measured E2E on a clean environment. |
+| [0017](0017-rename-to-ha-cupbearer.md) | Rename to HA-Cupbearer | 2026-11-12 author directive: HA-Services-Deployer → HA-Cupbearer (the Grail's water is poured by the cupbearer); full rename map, compatibility decisions, and the single surviving record of the old name. |

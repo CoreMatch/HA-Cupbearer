@@ -1,10 +1,10 @@
-> 来源：HA-Contract@bab2a05（2026-11-07），原路径 docs/dev/HA-Services-Deployer/version-manifest.md（契约仓知识库回迁）。
+> 来源：HA-Contract@bab2a05（2026-11-07），原路径 docs/dev/HA-Cupbearer/version-manifest.md（契约仓知识库回迁）。
 
-# HA Services Deployer Version Manifest
+# HA Cupbearer Version Manifest
 
 ## Purpose
 
-`HA-Services-Deployer` publishes a machine-readable manifest describing which
+`HA-Cupbearer` publishes a machine-readable manifest describing which
 service releases are currently available for download.
 
 Version manifest v1 supports:
@@ -28,7 +28,7 @@ future deployment-init protocol.
 
 ## Transport
 
-`HA-Services-Deployer` exposes:
+`HA-Cupbearer` exposes:
 
 - `GET /healthz` — liveness probe
 - `GET /api/v1/healthz` — liveness probe (API-prefixed)
@@ -36,7 +36,7 @@ future deployment-init protocol.
 - `GET /api/v1/projects` — release-oriented projection of the manifest: only artifacts with `role: "binary"`, top-level key `projects` (no `schema_version`). Envelope: `{"success": true, "message": "projects loaded", "data": {"generated_at": "...", "projects": [...]}}`.
 - `GET /api/v1/artifacts/:service/*filepath` — artifact download (path traversal guarded)
 
-The HA deployer service returns the manifest inside its standard HTTP envelope:
+The HA Cupbearer service returns the manifest inside its standard HTTP envelope:
 
 ```json
 {
@@ -135,7 +135,7 @@ still preserves correct binary replacement behavior.
 
 A concrete download URL resolves as:
 
-`{deployer_base_url}/api/v1/artifacts/{service.name}/{artifact.download_path}`
+`{cupbearer_base_url}/api/v1/artifacts/{service.name}/{artifact.download_path}`
 
 Example:
 
@@ -145,7 +145,7 @@ http://127.0.0.1:18080/api/v1/artifacts/hrpauth/release/linux-amd64/HRPAuth
 
 ## Validation Rules
 
-The deployer should reject or fail to serve an invalid manifest when:
+The Cupbearer should reject or fail to serve an invalid manifest when:
 
 1. `schema_version` is not `1`
 2. two service entries share the same `name`

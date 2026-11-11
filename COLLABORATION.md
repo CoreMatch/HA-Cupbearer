@@ -1,4 +1,4 @@
-# Collaboration Rules (HA-Services-Deployer)
+# Collaboration Rules (HA-Cupbearer)
 
 This repository is frequently worked on by multiple sessions/developers in the
 same working tree (orchestration feature work, template maintenance, docs).

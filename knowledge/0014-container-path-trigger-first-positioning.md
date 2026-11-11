@@ -13,7 +13,7 @@ multi-arch manifest lists with the manifests pinning list digests. The
 author then set the positioning for the container path (2026-11-11, two
 directives, final wording recorded here):
 
-1. Deployer's design intent is **orchestrating microservices without
+1. Cupbearer's design intent is **orchestrating microservices without
    containers** — bare-metal orchestration (version dir + symlink,
    Tinyvisor restarts, health, rollback) is the body.
 2. The container path's **default interaction is a one-click trigger**:
@@ -56,7 +56,7 @@ endpoint `POST /api/v1/deploy/container/trigger`,
   (the latter runs on the template's own semantics, e.g. local build).
 - The orchestrator does **not** do per-container creation, health polling,
   or rollback on this path — compose owns the stack lifecycle; the
-  Deployer triggers and reports truthfully (compose output, exit status,
+  Cupbearer triggers and reports truthfully (compose output, exit status,
   per-service snapshot).
 
 **Container-level management stays as implemented** (0011/0012/0013):
@@ -88,5 +88,5 @@ selector keeps its meaning.
   stack is a compose-side operation until a teardown counterpart is asked
   for.
 - Services whose manifests carry no published registry reference run on
-  the template's own semantics (e.g. the Deployer's own `build` source);
+  the template's own semantics (e.g. the Cupbearer's own `build` source);
   this is reported in run notes, not hidden.

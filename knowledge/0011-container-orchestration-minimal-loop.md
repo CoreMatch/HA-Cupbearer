@@ -9,7 +9,7 @@ cascade hardening, 2026-11-08)
 
 Bare-metal orchestration (0007) is proven. This phase opens the container
 runtime: the manifest `container` section un-freezes, a `runtime` selector
-chooses the execution form per project, and the Deployer itself becomes the
+chooses the execution form per project, and the Cupbearer itself becomes the
 first containerized service in the isolated environment (author-approved
 minimal loop).
 
@@ -69,7 +69,7 @@ minimal loop).
   (`restartDependentAny` dispatches by runtime). Both sides must return to
   healthy including smoke; a dependent failure is reported as such.
 - **Orphan handling (new)**: every managed container carries labels
-  `ha-services-deployer.project` / `.managed-by`; a run-start reconcile
+  `ha-cupbearer.project` / `.managed-by`; a run-start reconcile
   reports labeled containers whose project left the manifests —
   **report-only by default** (`orchestration.container.orphan_policy:
   report | remove`), author-approved.
@@ -96,7 +96,7 @@ itself running entirely as uid 1000.
 
 ## Minimal closed loop (measured, isolated environment)
 
-Service: **ha-services-deployer itself** (repo exclusively owned; manifest
+Service: **ha-cupbearer itself** (repo exclusively owned; manifest
 facts pre-existing; `FROM scratch` + static binary, zero registry pulls).
 Form: `runtime: container` via override, port 18080→18096 remap, volume
 `/tmp/ha-e2e/hasdc/data → /data` seeded with config + manifest.json.
@@ -111,7 +111,7 @@ Form: `runtime: container` via override, port 18080→18096 remap, volume
 3. **Failure + auto-rollback** (run `20261108-102506`): v1.0.1 image built
    from an exit-at-start binary → container `8378dce2422d` fails health
    (connection refused ×3) → auto-rollback recreated on
-   `ha-services-deployer:1.0.0` (container `61c3e4755fb6`, image id
+   `ha-cupbearer:1.0.0` (container `61c3e4755fb6`, image id
    `eb7c0873853b`); run record carries the full before/after evidence
    (`inspect-before` → failed `create` → `auto-rollback`), and `/healthz`
    answered 200 afterwards.
@@ -119,7 +119,7 @@ Form: `runtime: container` via override, port 18080→18096 remap, volume
 ## Hardening loop — digest pinning + cascade (measured, 2026-11-08)
 
 Both boundaries flagged above were closed the same day with measured drills
-in the same isolated environment (rootless docker, Deployer as its own
+in the same isolated environment (rootless docker, Cupbearer as its own
 deploy target, plus a throwaway dependent `drill-mirror`).
 
 1. **Re-tag drill (tags lie, rollback must not care)**: with the container
@@ -136,11 +136,11 @@ deploy target, plus a throwaway dependent `drill-mirror`).
    (The pre-hardening code would have skipped this rollback entirely —
    same-version guard — or, cross-version, recreated from the lying tag.)
 2. **Cascade drill (dependents really follow)**: `drill-mirror` (container,
-   `depends_on: ha-services-deployer required`, host port 18097) deployed;
+   `depends_on: ha-cupbearer required`, host port 18097) deployed;
    upstream upgraded `1.0.0` (digest `3eba28542729`) → `1.0.1` (digest
    `8c65cebe4058`); then `POST /api/v1/deploy/rollback
-   {"project":"ha-services-deployer","cascade":true}` (run
-   `20261108-111230-rb`, order `[ha-services-deployer, drill-mirror,
+   {"project":"ha-cupbearer","cascade":true}` (run
+   `20261108-111230-rb`, order `[ha-cupbearer, drill-mirror,
    ha-services-maintenance-view]`): upstream recreated on digest
    `3eba28542729` resolved from run records (`c3710ed8624e` →
    `0ce695502c4f`, healthy + smoke); container dependent recreated on its
@@ -218,7 +218,7 @@ closed the same day with measured evidence.
   `internal/orchestrator/state.go::Store.ImageIDForVersion`,
   `internal/orchestrator/orchestrator.go::Orchestrator.Rollback` (digest
   resolution + refusal), `internal/docker/docker.go::DetectHost`.
-- Runs (isolated state dir `/tmp/ha-e2e/deployer-run/data/deploy/runs/`):
+- Runs (isolated state dir `/tmp/ha-e2e/cupbearer-run/data/deploy/runs/`):
   first loop `20261108-101730.json`, `20261108-102329.json`,
   `20261108-102506.json`; hardening loop `20261108-110259.json` (re-tag
   drill), `20261108-110901.json` (drill-mirror first deploy),

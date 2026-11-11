@@ -6,9 +6,9 @@ Accepted (records current state)
 
 ## Context
 
-Deployer was a read-only delivery service (0001). Since config v2 it also
+Cupbearer was a read-only delivery service (0001). Since config v2 it also
 carries an opt-in bare-metal orchestration capability that drives Tinyvisor
-on the target machine: HA-Services-Deployer is the orchestrator, Tinyvisor
+on the target machine: HA-Cupbearer is the orchestrator, Tinyvisor
 is the process manager. No standalone orchestration CLI exists.
 
 ## Decision
@@ -106,7 +106,7 @@ with the name stated, and the preflight reports them as blockers
 against code): batch 1 (2026-11-08) — hrpauth `POST /oauth/token`
 (client_credentials, asserts `access_token`), yggdrasil profile query miss
 (deterministic 404 `ProfileNotFoundException`), mca `/api/status` (asserts
-`data.version` non-empty), deployer `/api/v1/projects` (asserts
+`data.version` non-empty), Cupbearer `/api/v1/projects` (asserts
 `data.projects` non-empty); batch 2 (2026-11-08) — haskinlib
 `GET /texture/listpreview` (asserts `items` field), haskinproxy CSL
 `GET /:username` miss (404 + `user not found`), winnerproxy `hasJoined`
@@ -160,7 +160,7 @@ assets must follow the hard naming convention
 
 ## Consequences
 
-- Deployer now has a dual runtime role (delivery + orchestration). The
+- Cupbearer now has a dual runtime role (delivery + orchestration). The
   orchestration surface is additive; the 0001 GET surface is unchanged.
 - Process lifecycle belongs to Tinyvisor exclusively (name-uniqueness,
   by-name idempotent upsert, atomic restart were added there for this).

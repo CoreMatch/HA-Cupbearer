@@ -33,7 +33,7 @@ with three hard rules:
 3. **Authentication follows the host docker login.** The pull shells out to
    the docker CLI, which reads the host's `~/.docker/config.json` (or its
    configured credential helper); under rootless that is the orchestrator
-   user's own login. The Deployer holds no registry credentials, has no
+   user's own login. The Cupbearer holds no registry credentials, has no
    config key for them, and hardcodes no token. Pull failures are classified
    into readable causes — 401 authentication, 403 access denied, 404 not
    found, 429 rate limit — never swallowed into one "pull failed".

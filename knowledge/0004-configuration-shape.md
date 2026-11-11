@@ -44,15 +44,15 @@ Record the verified shape:
 - **Code default port vs deployment port.** Bare `go run .` listens on
   `:2770`. The platform compose deployment overrides this to `:18080` via the
   rendered config template (this repo's
-  `deploy/config/ha-services-deployer.yaml.tmpl (field: listen)`,
-  `listen: ":18080"`; `deploy/docker-compose.yml (field: DEPLOYER_PORT)` maps
-  `${DEPLOYER_PORT:-18080}`), and the Dockerfile `EXPOSE 18080`. HA-Contract's
+  `deploy/config/ha-cupbearer.yaml.tmpl (field: listen)`,
+  `listen: ":18080"`; `deploy/docker-compose.yml (field: CUPBEARER_PORT)` maps
+  `${CUPBEARER_PORT:-18080}`), and the Dockerfile `EXPOSE 18080`. HA-Contract's
   download-URL example also uses `18080`
-  (/home/lnb/Desktop/HA/maintanance/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Download URL Resolution)).
+  (/home/lnb/Desktop/HA/maintanance/HA-Cupbearer/knowledge/0006-version-manifest.md (field: Download URL Resolution)).
   So `:2770` is only the local-dev default; operators should expect `18080`
   in composed deployments.
 - Relative paths (`./data/...`) resolve against the process working
-  directory; the compose deployment mounts a `deployer-data` volume at
+  directory; the compose deployment mounts a `cupbearer-data` volume at
   `/app/data` with `WORKDIR /app`, so artifacts live at
   `/app/data/artifacts` and the manifest at `/app/data/manifest.json` there.
 - No config value is required: a brand-new instance starts with zero manual
@@ -67,6 +67,6 @@ Record the verified shape:
   `internal/config/migrations.go::configMigrations`,
   `internal/config/migrations.go::MigrateConfig`,
   `internal/config/migrations.go::BackupConfigFile`.
-- Deployment: `deploy/config/ha-services-deployer.yaml.tmpl (field: listen)`,
-  `deploy/docker-compose.yml (field: DEPLOYER_PORT)` (deployer service
+- Deployment: `deploy/config/ha-cupbearer.yaml.tmpl (field: listen)`,
+  `deploy/docker-compose.yml (field: CUPBEARER_PORT)` (Cupbearer service
   block), `Dockerfile:L21 fp=40012d36`.

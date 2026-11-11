@@ -1,10 +1,10 @@
-# HA-Services-Deployer
+# HA-Cupbearer
 
-`HA-Services-Deployer` is the backend service for HA service rollout and artifact delivery.
+`HA-Cupbearer` is the backend service for HA service rollout and artifact delivery.
 
 ## Current scope
 
-- expose a deployer HTTP API
+- expose the Cupbearer HTTP API
 - provide a version manifest for downstream maintenance views
 - serve release artifacts from a local storage directory
 
@@ -24,7 +24,7 @@ stay release-oriented). See `knowledge/0016-first-run-bootstrap-mv-autostart-inf
 Turns a fresh machine into a runnable platform without manual secret
 generation, database creation, or `.env` assembly. Independent of
 `orchestration.enabled`; the wizard UI lives in HA-Services-MaintenanceView,
-which the Deployer **auto-launches and supervises** (reuses an already-
+which the Cupbearer **auto-launches and supervises** (reuses an already-
 running instance, never starts a second).
 
 - `GET /api/v1/deploy/bootstrap/status` — current state + wizard metadata
@@ -86,7 +86,7 @@ When orchestration is enabled (see below), the following are added:
 
 ## Bare-metal orchestration (opt-in)
 
-Deployer can act as a bare-metal orchestrator that drives
+Cupbearer can act as a bare-metal orchestrator that drives
 [Tinyvisor](https://github.com/SamuelCheston/Tinyvisor) on the target machine:
 artifact staging → version dir + `current` symlink → script registration →
 restart → health probe → rollback. Full boundary and semantics:
@@ -137,7 +137,7 @@ Key rules:
 
 ## Container path (default interaction: one-click trigger)
 
-**定位**：Deployer 的设计意图是"在不使用容器的情况下编排微服务"——裸金属
+**定位**：Cupbearer 的设计意图是"在不使用容器的情况下编排微服务"——裸金属
 编排（版本目录+软链、Tinyvisor 重启、健康判定、回滚）是本体。容器路径在
 此之上提供两种形态，职责不同：
 
@@ -242,12 +242,12 @@ Runtime 选择与 docker 端点：
 
 ## Deployment facts (this service)
 
-Authoritative deployment facts for the Deployer itself live in
+Authoritative deployment facts for the Cupbearer itself live in
 [`deploy-manifest.yaml`](deploy-manifest.yaml) at the repo root
 (`manager: aapanel` = panel-managed, orchestrator read-only):
 
 - Deployment port `:18080`, loopback-only (per
-  `deploy/config/ha-services-deployer.yaml.tmpl`; identical to the bare-local
+  `deploy/config/ha-cupbearer.yaml.tmpl`; identical to the bare-local
   first-run default); health probe `GET /healthz`.
 - No service dependencies (local-file delivery service); no database, no Redis.
 - Config file `config.yaml` (template version 1; the code auto-migrates the
@@ -305,7 +305,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 | winnerproxy | 2777 | all interfaces | game-facing |
 | mca-server | 9178 | all interfaces | game-facing |
 | ha-webui-sdkhandler | 2704, 2705 | **127.0.0.1** | internal build service |
-| ha-services-deployer | 18080 | **127.0.0.1** | internal delivery service |
+| ha-cupbearer | 18080 | **127.0.0.1** | internal delivery service |
 | ha-services-maintenance-view | 18081 | **127.0.0.1** | ops panel, unauthenticated |
 | ha-webui-nginx (optional) | 8080 | all interfaces | profile `webui` |
 

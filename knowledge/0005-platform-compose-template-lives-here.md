@@ -6,7 +6,7 @@ Accepted (records current state and boundary)
 
 ## Context
 
-Besides the deployer service itself, this repository hosts the Compose
+Besides the Cupbearer service itself, this repository hosts the Compose
 template that orchestrates the whole HA platform in containers, documented
 in `README.md`.
 
@@ -31,7 +31,7 @@ Record the arrangement and its boundary:
   (`deploy/docker-compose.build.yml (field: context: ../)` —
   `../HRPAuth`, `../HRPAuth-Yggdrasil-API`, `../HASkinLib`,
   `../HASkinProxy`, `../WinnerProxy`, `../MatchCoreArena-Server`,
-  `../HA-WebUI-SDKHandler`, `../HA-Services-Deployer`,
+  `../HA-WebUI-SDKHandler`, `../HA-Cupbearer`,
   `../HA-Services-MaintenanceView`). That is why the orchestration lives
   here rather than in each service repo: a single checkout level where all
   siblings exist. A full platform **build** therefore requires all sibling
@@ -47,7 +47,7 @@ Record the arrangement and its boundary:
   `docker-entrypoint.sh::envsubst`; the same script is duplicated in the
   sibling repos). All mutable values therefore flow from `.env`.
 - **Boundary statement:** `deploy/` is deployment tooling. It is not part of
-  the deployer service's runtime API surface (0001) and is not covered by the
+  the Cupbearer service's runtime API surface (0001) and is not covered by the
   version-manifest contract. Changes to `deploy/` do not change service
   behavior; they change how the platform is assembled.
 
@@ -58,8 +58,8 @@ Record the arrangement and its boundary:
   the platform locally must check out the sibling repos too.
 - Port defaults in compose: hrpauth 2778, yggdrasil-api 2770, haskinlib
   2701, haskinproxy 2702, winnerproxy 2777, mca-server 9178 listen on all
-  interfaces; sdkhandler 2704/2705, deployer 18080, and maintenance-view
-  18081 are loopback-bound by default (`SDKHANDLER_BIND` / `DEPLOYER_BIND` /
+  interfaces; sdkhandler 2704/2705, cupbearer 18080, and maintenance-view
+  18081 are loopback-bound by default (`SDKHANDLER_BIND` / `CUPBEARER_BIND` /
   `MAINTENANCEVIEW_BIND` override the bind address). The optional `webui`
   profile adds an nginx sidecar on 8080 serving the built frontend
   (`deploy/docker-compose.yml`, per-service `ports` blocks).

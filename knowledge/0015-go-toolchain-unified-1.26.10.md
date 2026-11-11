@@ -21,7 +21,7 @@ per-service version override.
 - **Unified version: Go 1.26.10** — the lowest version satisfying every
   repo's `go.mod`. All ten Dockerfiles now default
   `ARG GO_VERSION=1.26.10`; `go.mod` directives are `go 1.26.10`
-  everywhere except HA-Services-Deployer, whose `go.mod` stays
+  everywhere except HA-Cupbearer, whose `go.mod` stays
   `go 1.26.0` + `toolchain go1.26.10` (file owned by an in-flight parallel
   track at the time; the 1.26.10 base image satisfies it as-is — align the
   directive when that track lands).
@@ -33,7 +33,7 @@ per-service version override.
 - **Republished images** (2026-11-12, rebuilt with zero build args):
   digests changed only where inputs actually changed —
   `ha-hrpauth` (Dockerfile + upstream code commits),
-  `ha-services-deployer`, `ha-services-maintenance-view`, `ha-bs2ha`
+  `ha-cupbearer`, `ha-services-maintenance-view`, `ha-bs2ha`
   (Dockerfile/go.mod). The other six came out **byte-identical** to the
   previous publication (their earlier builds already ran the 1.26.10
   toolchain via build-arg; the Dockerfile text is not part of the final
@@ -56,7 +56,7 @@ per-service version override.
 
 ## Boundaries / open items
 
-- HA-Services-Deployer `go.mod` directive unification is deferred to the
+- HA-Cupbearer `go.mod` directive unification is deferred to the
   parallel track owning that file (see Context); no build behavior depends
   on it.
 - Future Go bumps: raise `go.mod` first (CI follows automatically), then

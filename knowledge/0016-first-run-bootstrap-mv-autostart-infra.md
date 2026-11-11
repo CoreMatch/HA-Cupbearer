@@ -19,8 +19,8 @@ selected deployment path.
 
 ### Bootstrap layer (`internal/bootstrap/`)
 
-Independent of `orchestration.enabled`; available whenever the Deployer runs.
-Contract: HA-Contract `docs/api/openapi/ha-services-deployer.yaml` v1.3.0
+Independent of `orchestration.enabled`; available whenever the Cupbearer runs.
+Contract: HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.3.0
 (`/api/v1/deploy/bootstrap/*`). Steps, in order:
 
 1. **infra** — MySQL/Redis, standing per selected deployment path
@@ -83,12 +83,12 @@ itself is auto-generated into the credentials file on first start when absent
 
 ### MaintenanceView autostart (`internal/mvmanager/`)
 
-The Deployer supervises exactly one MV instance so operators never deploy it
+The Cupbearer supervises exactly one MV instance so operators never deploy it
 separately: a healthy MV at the configured address is reused (never a second
 copy); otherwise the binary is located (config path or candidates next to the
-Deployer binary), its config is generated (listen address, deployer URL,
+Cupbearer binary), its config is generated (listen address, cupbearer URL,
 deploy token held server-side, `loopback_session: true`) and it runs as a
-managed child (bounded restarts, graceful stop with the Deployer, log at
+managed child (bounded restarts, graceful stop with the Cupbearer, log at
 `<work_dir>/mv.log`). Missing binary = `unavailable` with a plain-language
 reason, never fatal. MV side: `server.loopback_session` (MV config) trusts
 loopback clients without login for this managed form only; the deploy token
@@ -104,7 +104,7 @@ fingerprints, and a retry button (resume).
 
 ## Consequences
 
-- Fresh machine: run the Deployer binary → open the MV URL it reports →
+- Fresh machine: run the Cupbearer binary → open the MV URL it reports →
   one-click infra + fill URLs + run → platform config exists and services can
   start. Measured E2E (2026-11-12, clean environment): infra launched and
   health-waited; four DBs + app user created; keys generated; `.env` merged;
@@ -134,7 +134,7 @@ fingerprints, and a retry button (resume).
 - `internal/mvmanager/manager.go::Start` — reuse-or-manage decision.
 - `internal/server/handlers_bootstrap.go` — endpoint surface.
 - `deploy/infra.yml` — infra compose (wipe procedure in header comment).
-- HA-Contract `docs/api/openapi/ha-services-deployer.yaml` v1.3.0.
+- HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.3.0.
 - E2E transcript: this session's run records under `data/bootstrap/runs/`
   (ids 20261112-0124xx … 20261112-0134xx, including the killed `running`
   record and its successful resume).

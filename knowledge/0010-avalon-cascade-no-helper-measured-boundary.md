@@ -91,7 +91,7 @@ All four were FIXED and re-measured in the isolated environment on
   fell back to `filepath.Dir(os.Executable())` (`internal/util/file`),
   so under the `releases/<v>/` layout every upgrade reset config, maps,
   mods and runtime data. Fix: `baremetal.install.shared_data` manifest
-  field (Deployer `feat/shared-data-dir`). The orchestrator creates
+  field (Cupbearer `feat/shared-data-dir`). The orchestrator creates
   `<root>/shared/` and never touches it on version switch/prune; the
   rendered startup script injects the absolute path via
   `exec env "avalonhelper.basePath=<root>/shared" ./current/<binary>`

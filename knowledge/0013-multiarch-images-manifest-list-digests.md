@@ -64,7 +64,7 @@ ha-platform compose stack (9 services; external `mysql-smoke` /
 
 - amd64 round: 9/9 healthy; every container `uname -m` = `x86_64`;
   spot checks: hrpauth `/health` ok, mca-server `/api/status` reporting
-  1.11.0, deployer `/healthz` ok.
+  1.11.0, Cupbearer `/healthz` ok.
 - arm64 round: 9/9 healthy under QEMU; every container `uname -m` =
   `aarch64`; same spot checks pass.
 - `limeight/ha-bs2ha` (not in the compose stack): run on both platforms;

@@ -16,7 +16,7 @@ load-bearing evidence is reproduced below).
 
 A full deploy → healthy → idempotent re-run → upgrade → rollback cycle against
 a **real project** (HA-Services-MaintenanceView) with **real binaries**, driven
-by the Deployer orchestrator through a real Tinyvisor instance:
+by the Cupbearer orchestrator through a real Tinyvisor instance:
 
 1. **Deploy v1**: artifact staged (sha256 checked) → `releases/1.0.0/` →
    `current` symlink → Tinyvisor script upsert → restart → health probe green.
@@ -36,7 +36,7 @@ by the Deployer orchestrator through a real Tinyvisor instance:
 ## How it was verified
 
 - Environment: single local host, isolated directories and ports — Tinyvisor
-  on 18093 (fresh data dir), Deployer orchestrator on 18090, deployed service
+  on 18093 (fresh data dir), Cupbearer orchestrator on 18090, deployed service
   on 18091. No production host was touched.
 - Tinyvisor script registered by name `ha-services-maintenance-view`,
   `workDir` = install root, content `#!/bin/sh\nset -e\nexec ./current/hasmv`.
@@ -97,7 +97,7 @@ not be read as production capability:
 
 ## Evidence
 
-- Run records and state under the ephemeral `/tmp/ha-e2e/deployer-run/data/deploy/`
+- Run records and state under the ephemeral `/tmp/ha-e2e/cupbearer-run/data/deploy/`
   at verification time (transcript archived at `/tmp/ha-e2e/REPORT.md`).
 - Binary fingerprints: `sha256sum` of the staged artifacts and of
   `/proc/<pid>/exe` before/after rollback (values above).

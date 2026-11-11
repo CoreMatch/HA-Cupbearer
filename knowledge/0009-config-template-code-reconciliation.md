@@ -31,7 +31,7 @@ every template comment was checked against current code facts.
 | winnerproxy.yaml.tmpl | "2" = code v2 (unchecked metadata) | 26/26 parsed | 7 never referenced (version, server.read/write_timeout_sec, log.level, log.format, site.name, site.version) + timeout_sec logged-but-not-applied | none (Load defaults everything; creds guarded by :?) | aligned; stale comment fixed; compose mount was missing (fixed) |
 | mca-server.yaml.tmpl | "1.9.0" = code 1.9.0 (historical drift already fixed) | 34/34 parsed | server.read/write_timeout_seconds (gin runs without timeouts) | auth.tokens_path (compose injects MCA_TOKENS_PATH, always overrides; absent file only warns) | aligned |
 | sdkhandler.yaml.tmpl | "4" = code v4 | 20/20 read | current_link is semi-degenerate (existence check only; publish no longer swaps the symlink) | none | aligned |
-| ha-services-deployer.yaml.tmpl | fixed "1"→"2" (code v2) | 4/4 read | none | orchestration.* (zero-value = orchestrator disabled by design) | aligned after fix |
+| ha-cupbearer.yaml.tmpl | fixed "1"→"2" (code v2) | 4/4 read | none | orchestration.* (zero-value = orchestrator disabled by design) | aligned after fix |
 | ha-services-maintenance-view.yaml.tmpl | "1" = code v1 | 6/6 parsed | server.public_base_url reserved (echoed by /api/config only; knowledge 0005/0006) | none | aligned |
 
 ### Defects fixed in this batch (merge `d294fdc`, plus service-repo commits)
@@ -55,7 +55,7 @@ every template comment was checked against current code facts.
    `e43a58b`); the same one-line defect was fixed in HRPAuth (`f633104`,
    silent migration failure) and HRPAuth-Yggdrasil-API (`481e972`, fatal at
    startup).
-3. **Stale version markers**: hrpauth template 14→15, deployer template 1→2.
+3. **Stale version markers**: hrpauth template 14→15, cupbearer template 1→2.
    Both eliminated a migrate+backup+rewrite cycle on every container start.
 4. **Stale comments**: winnerproxy credential comment ("compose injects
    super creds by default" — actually :?-required fill-what-you-give);
@@ -78,7 +78,7 @@ every template comment was checked against current code facts.
   relay registration), `MCA_MAINTENANCE_TOKEN` (empty silently disables OPS
   auth), `MAINTENANCEVIEW_PUBLIC_URL`.
 - **Live `deploy/.env` aligned** (backup outside the repo at
-  `/home/lnb/Desktop/HA/.env-backups/deployer-20261108.env`; `deploy/.env` is
+  `/home/lnb/Desktop/HA/.env-backups/cupbearer-20261108.env`; `deploy/.env` is
   gitignored): satellite client ids corrected to presence names
   (WinnerProxy / HRPAuth-Yggdrasil-API / HASkinProxy) with fresh secrets
   (old winnerproxy secret equalled the super secret, tripping the seed-skip
