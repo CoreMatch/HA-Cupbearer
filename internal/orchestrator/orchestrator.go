@@ -48,16 +48,16 @@ func (e *ErrValidation) Error() string {
 type ProjectOutcome string
 
 const (
-	OutcomePending   ProjectOutcome = "pending"
-	OutcomeUpToDate  ProjectOutcome = "up-to-date"
-	OutcomeDeployed  ProjectOutcome = "deployed"
+	OutcomePending    ProjectOutcome = "pending"
+	OutcomeUpToDate   ProjectOutcome = "up-to-date"
+	OutcomeDeployed   ProjectOutcome = "deployed"
 	OutcomeRolledBack ProjectOutcome = "rolled-back"
-	OutcomeReachable ProjectOutcome = "reachable" // external 依赖可达
-	OutcomeFailed    ProjectOutcome = "failed"
-	OutcomeSkipped   ProjectOutcome = "skipped"
-	OutcomeForeign   ProjectOutcome = "foreign"
-	OutcomePlugin    ProjectOutcome = "plugin" // 插件型产物：只登记，不部署
-	OutcomeDryRun    ProjectOutcome = "dry-run"
+	OutcomeReachable  ProjectOutcome = "reachable" // external 依赖可达
+	OutcomeFailed     ProjectOutcome = "failed"
+	OutcomeSkipped    ProjectOutcome = "skipped"
+	OutcomeForeign    ProjectOutcome = "foreign"
+	OutcomePlugin     ProjectOutcome = "plugin" // 插件型产物：只登记，不部署
+	OutcomeDryRun     ProjectOutcome = "dry-run"
 )
 
 type StepRecord struct {
@@ -81,20 +81,20 @@ type ProjectResult struct {
 }
 
 type RunOptions struct {
-	Projects           []string `json:"projects,omitempty"`
-	Group              string   `json:"group,omitempty"`
-	DryRun             bool     `json:"dry_run,omitempty"`
+	Projects []string `json:"projects,omitempty"`
+	Group    string   `json:"group,omitempty"`
+	DryRun   bool     `json:"dry_run,omitempty"`
 	// AutoRollbackOnFail 默认 true：健康判定失败时自动切回上一版本并重启。
 	AutoRollbackOnFail *bool `json:"auto_rollback_on_fail,omitempty"`
 }
 
 type Run struct {
-	ID         string                    `json:"id"`
-	Type       string                    `json:"type"` // deploy | rollback
-	State      string                    `json:"state"` // running | done | failed
-	Options    RunOptions                `json:"options"`
-	Order      []string                  `json:"order"`
-	Results    map[string]*ProjectResult `json:"results"`
+	ID      string                    `json:"id"`
+	Type    string                    `json:"type"`  // deploy | rollback
+	State   string                    `json:"state"` // running | done | failed
+	Options RunOptions                `json:"options"`
+	Order   []string                  `json:"order"`
+	Results map[string]*ProjectResult `json:"results"`
 	// Preflight 记录本次运行开局时的前置检查报告。
 	// 阻断项已在入口处拦截（不会进入运行），这里留存的是放行时的报告。
 	Preflight *PreflightReport `json:"preflight,omitempty"`
@@ -588,7 +588,7 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 
 	// 1. 产物：下载/复制 + sha256 校验 + 幂等落版本目录。
 	relDir := releaseDir(eff.root, m.ServiceVersion)
-	sha, err := artifact.Stage(ctx, m, relDir, o.creds.GithubToken)
+	sha, err := artifact.Stage(ctx, m, relDir, o.creds)
 	if !addStep("artifact", err, fmt.Sprintf("stage %s (sha256 %s)", m.Baremetal.Artifact.Source, shortSHA(sha))) {
 		res.Outcome = OutcomeFailed
 		res.Detail = "artifact stage failed"

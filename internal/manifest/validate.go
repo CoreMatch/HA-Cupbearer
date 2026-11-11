@@ -9,13 +9,15 @@ import (
 )
 
 var (
-	validGroups    = map[string]bool{"infra": true, "core": true, "satellite": true, "build": true, "ops": true, "game": true, "edge": true, "web": true}
-	validManagers  = map[string]bool{"tinyvisor": true, "aapanel": true, "manual": true}
-	validPolicies  = map[string]bool{"never": true, "always": true, "unless-stopped": true, "on-failure": true}
-	validSources   = map[string]bool{"ci_release": true, "local_path": true}
-	projectNameRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	binaryNameRe   = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
-	versionTokenRe = regexp.MustCompile(`\{service_version\}`)
+	validGroups     = map[string]bool{"infra": true, "core": true, "satellite": true, "build": true, "ops": true, "game": true, "edge": true, "web": true}
+	validManagers   = map[string]bool{"tinyvisor": true, "aapanel": true, "manual": true}
+	validPolicies   = map[string]bool{"never": true, "always": true, "unless-stopped": true, "on-failure": true}
+	validSources    = map[string]bool{"ci_release": true, "local_path": true, "grail": true}
+	validGrailChan  = map[string]bool{"release": true, "candidate": true, "ci": true}
+	projectNameRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	binaryNameRe    = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	grailPlatformRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	versionTokenRe  = regexp.MustCompile(`\{service_version\}`)
 	// smokeSecretRefRe 匹配 ${secret:<name>} 引用；冒烟请求中凡出现 ${...}
 	// 必须是该形态，密钥值本身绝不进 Manifest。
 	smokeSecretRefRe  = regexp.MustCompile(`^\$\{secret:[A-Za-z0-9_-]+\}$`)
@@ -369,7 +371,7 @@ func validatePlugin(rep *Report, m *Manifest) {
 
 	art := p.Artifact
 	if !validSources[art.Source] {
-		rep.addf("%s: plugin.artifact.source 非法（当前 %q），支持 ci_release | local_path", ctx, art.Source)
+		rep.addf("%s: plugin.artifact.source 非法（当前 %q），支持 ci_release | local_path | grail", ctx, art.Source)
 		return
 	}
 	switch art.Source {
@@ -381,6 +383,8 @@ func validatePlugin(rep *Report, m *Manifest) {
 		if art.LocalPath == "" {
 			rep.addf("%s: plugin.artifact.local_path 必填", ctx)
 		}
+	case "grail":
+		validateGrailSpec(rep, ctx, "plugin.artifact.grail", art.Grail)
 	}
 }
 
@@ -452,7 +456,7 @@ func validateBaremetal(rep *Report, m *Manifest) {
 		return
 	}
 	if !validSources[art.Source] {
-		rep.addf("%s: baremetal.artifact.source 非法（%q），支持 ci_release | local_path", ctx, art.Source)
+		rep.addf("%s: baremetal.artifact.source 非法（%q），支持 ci_release | local_path | grail", ctx, art.Source)
 		return
 	}
 	switch art.Source {
@@ -464,6 +468,28 @@ func validateBaremetal(rep *Report, m *Manifest) {
 		if art.LocalPath == "" {
 			rep.addf("%s: baremetal.artifact.local_path 必填", ctx)
 		}
+	case "grail":
+		validateGrailSpec(rep, ctx, "baremetal.artifact.grail", art.Grail)
+	}
+}
+
+// validateGrailSpec 校验 grail 来源声明：上游地址、项目、渠道合法；
+// 版本与平台可选（缺省 latest / linux-amd64，见 Effective* 方法）。
+// 版本号按不透明标识符对待：只要求非空时可见字符合法，不解读数字。
+func validateGrailSpec(rep *Report, ctx, prefix string, g GrailSpec) {
+	if g.BaseURL == "" {
+		rep.addf("%s: %s.base_url 必填", ctx, prefix)
+	} else if !strings.HasPrefix(g.BaseURL, "http://") && !strings.HasPrefix(g.BaseURL, "https://") {
+		rep.addf("%s: %s.base_url 必须为 http(s) 地址", ctx, prefix)
+	}
+	if g.Project == "" || !projectNameRe.MatchString(g.Project) {
+		rep.addf("%s: %s.project 必填且须匹配 %s", ctx, prefix, projectNameRe.String())
+	}
+	if !validGrailChan[g.Channel] {
+		rep.addf("%s: %s.channel 非法（%q），支持 release | candidate | ci", ctx, prefix, g.Channel)
+	}
+	if g.Platform != "" && !grailPlatformRe.MatchString(g.Platform) {
+		rep.addf("%s: %s.platform 非法（%q）", ctx, prefix, g.Platform)
 	}
 }
 
@@ -573,4 +599,22 @@ func (m *Manifest) EffectiveChecksumAsset() string {
 		return a
 	}
 	return m.EffectiveAsset() + ".sha256"
+}
+
+// EffectiveGrailVersion 返回 grail 来源的版本选择：缺省 latest。
+// 版本号是不透明标识符——本方法不做任何解析或比较。
+func (m *Manifest) EffectiveGrailVersion() string {
+	if v := m.Baremetal.Artifact.Grail.Version; v != "" {
+		return v
+	}
+	return "latest"
+}
+
+// EffectiveGrailPlatform 返回 grail 来源的平台令牌：缺省 linux-amd64
+// （与 ci_release 资产硬约定的目标平台一致）。
+func (m *Manifest) EffectiveGrailPlatform() string {
+	if p := m.Baremetal.Artifact.Grail.Platform; p != "" {
+		return p
+	}
+	return "linux-amd64"
 }
