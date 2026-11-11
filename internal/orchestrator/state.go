@@ -24,6 +24,9 @@ func NewStore(dir string) *Store {
 	return &Store{dir: dir}
 }
 
+// Dir 返回状态目录（运行记录与派生产物的落盘根）。
+func (s *Store) Dir() string { return s.dir }
+
 // GlobalState 记录每个项目最近一次的编排结果。
 type GlobalState struct {
 	Projects  map[string]*ProjectState `json:"projects"`

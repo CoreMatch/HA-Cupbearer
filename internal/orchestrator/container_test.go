@@ -41,6 +41,14 @@ type fakeDocker struct {
 	imageTags     map[string][]string // repo -> 标签（新→旧）
 	pulledRefs    []string            // Pull 调用记录（按序）
 	repoDigests   map[string][]string // ref -> RepoDigests（可预置以模拟漂移）
+
+	composeUpErr   error
+	composeUpOut   string
+	composePsOut   string
+	composeUpCalls [][]string // 每次 ComposeUp 的文件序列
+
+	composeServices    []string // 模板声明的服务名（ComposeServices 返回）
+	composeServicesErr error
 }
 
 func newFakeDocker() *fakeDocker {
@@ -230,6 +238,21 @@ func (f *fakeDocker) RemoveImage(ctx context.Context, ref string) error {
 	}
 	f.removedImages = append(f.removedImages, ref)
 	return nil
+}
+
+func (f *fakeDocker) ComposeUp(ctx context.Context, files []string) (string, error) {
+	f.mu.Lock()
+	f.composeUpCalls = append(f.composeUpCalls, append([]string(nil), files...))
+	f.mu.Unlock()
+	return f.composeUpOut, f.composeUpErr
+}
+
+func (f *fakeDocker) ComposePs(ctx context.Context, files []string) (string, error) {
+	return f.composePsOut, nil
+}
+
+func (f *fakeDocker) ComposeServices(ctx context.Context, files []string) ([]string, error) {
+	return append([]string(nil), f.composeServices...), f.composeServicesErr
 }
 
 // ---------- 测试环境 ----------
