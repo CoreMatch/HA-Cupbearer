@@ -642,3 +642,44 @@ func TestValidatePlugin_TargetProjectValid(t *testing.T) {
 		t.Fatalf("plugin.target_project at existing project must pass: %v", rep.Errors)
 	}
 }
+
+func TestValidateImageDigest(t *testing.T) {
+	// 去掉对 mysql 的依赖（单清单装载时依赖不存在会引入无关错误）；
+	// runtime: container 让 container 段成为生效段参与校验。
+	base := strings.Replace(validManifest, "  depends_on:\n    - { project: mysql, kind: required }\n", "", 1)
+	base = "runtime: container\n" + base
+	good := base + `container:
+  image:
+    source: registry
+    repo: limeight/ha-svc-a
+    tag: "1.2.0-abc1234"
+    digest: "sha256:0af7ba452443609162494a0d686dc8e589a48e403062259838faf132e1039039"
+`
+	if rep := validateSingleManifestYAML(t, good); !rep.OK() {
+		t.Fatalf("valid registry image with digest rejected: %v", rep.Errors)
+	}
+
+	bad := base + `container:
+  image:
+    source: registry
+    repo: limeight/ha-svc-a
+    digest: "sha256:nothex"
+`
+	rep := validateSingleManifestYAML(t, bad)
+	if rep.OK() {
+		t.Fatal("malformed digest must fail")
+	}
+	if !strings.Contains(strings.Join(rep.Errors, "\n"), "container.image.digest 必须为 sha256:") {
+		t.Fatalf("unexpected errors: %v", rep.Errors)
+	}
+
+	noRef := base + `container:
+  image:
+    source: registry
+    repo: limeight/ha-svc-a
+`
+	rep = validateSingleManifestYAML(t, noRef)
+	if rep.OK() {
+		t.Fatal("registry image without tag or digest must fail")
+	}
+}
