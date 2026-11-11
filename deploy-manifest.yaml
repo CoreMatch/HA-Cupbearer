@@ -80,9 +80,10 @@ baremetal:
 
 container:
   # 容器形态（2026-11-08 起启用；镜像即版本：<project>:<service_version>）。
-  # 已发布镜像（Docker Hub，真实 build → push → 回拉 → 挂回 compose 冒烟全过）：
-  #   limeight/ha-services-deployer:4f97b5e
-  #   digest sha256:07abad93a7b8c8b49cdee3b8432214a3d25e80cd6ed903ae2b6c7d9169332945
+  # 已发布镜像（Docker Hub，真实 build → push → 回拉 → 挂回 compose 冒烟全过；
+  # linux/amd64 + linux/arm64 多架构 manifest list，digest 为 list 摘要）：
+  #   limeight/ha-services-deployer:edc8b38
+  #   digest sha256:eadc826514a15220e202e86df09fe57255fa6f25bfdd71a7207c35ad0bbc4341
   # 本清单的 image 段保持 build 源：编排器容器形态自举走本地构建，
   # 零 registry 依赖（离线可跑）；发布地址仅作上述记录。
   image:
