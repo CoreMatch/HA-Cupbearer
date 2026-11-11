@@ -15,9 +15,12 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-// 基础设施（MySQL/Redis）是两条部署链路共用的：裸金属连宿主地址+发布端口，
-// compose 连服务名+容器口。本文件负责探测、接管复用、必要时一键拉起容器，
-// 并等待"真能用"（MySQL 能执行查询、Redis 能 PING）才返回。
+// 基础设施（MySQL/Redis）按所选部署路径各自成立：选定裸金属编排时，它是
+// 为裸金属服务提供连接的本地实例（进程连 127.0.0.1+宿主发布端口）；选定
+// 容器编排时，它归 compose 一侧（服务名+容器口，经 ha-infra 网络解析）。
+// 本文件负责探测、接管复用、必要时一键拉起容器，并等待"真能用"
+//（MySQL 能执行查询、Redis 能 PING）才返回。两种连接形态只是同一实例
+// 的不同寻址方式，按目标路径如实报告，不做"跨路径共用"的承诺。
 //
 // 幂等与复用纪律：已有可用实例一律接管复用，绝不重复起；只管理本层命名的
 // 容器（ha-infra-*），不删任何既有容器或卷。
@@ -50,7 +53,8 @@ type InfraDocker interface {
 	NetworkExists(ctx context.Context, name string) (bool, error)
 }
 
-// InfraInstance 是单个基础设施实例的事实（同一份事实推导两种地址形态）。
+// InfraInstance 是单个基础设施实例的事实。两种寻址形态（宿主发布口 /
+// compose 服务名）都记录下来，由消费方按所选部署路径取用。
 type InfraInstance struct {
 	Kind             string `json:"kind"` // mysql | redis
 	Mode             string `json:"mode"` // container | external | absent

@@ -17,7 +17,7 @@ Manifest v1 is organized by service release. It is used for release display,
 version comparison, and artifact download selection. First-deployment
 configuration initialization is **no longer out of scope**: it is provided by
 the bootstrap layer below (outside the version-manifest schema — manifests
-stay release-oriented). See `knowledge/0016-first-run-bootstrap-mv-autostart-shared-infra.md`.
+stay release-oriented). See `knowledge/0016-first-run-bootstrap-mv-autostart-infra.md`.
 
 ## First-run bootstrap (one-click initialization)
 
@@ -28,8 +28,9 @@ which the Deployer **auto-launches and supervises** (reuses an already-
 running instance, never starts a second).
 
 - `GET /api/v1/deploy/bootstrap/status` — current state + wizard metadata
-- `GET /api/v1/deploy/bootstrap/infra` — shared MySQL/Redis status (both
-  address forms: bare-metal `127.0.0.1:<port>`, compose `mysql:3306`)
+- `GET /api/v1/deploy/bootstrap/infra` — MySQL/Redis infrastructure status
+  (connection forms per deployment path: bare-metal `127.0.0.1:<port>`,
+  container compose `mysql:3306`)
 - `POST /api/v1/deploy/bootstrap/infra/mysql|redis` — one-click ensure
   (detect → adopt existing → launch managed container, wait for real
   readiness; **X-Deploy-Token**)
@@ -42,16 +43,16 @@ running instance, never starts a second).
 
 Guarantees: idempotent (existing values/files/databases preserved, drift
 warns, never overwrites); resumable (re-run continues from the breakpoint);
-no plaintext secrets in any response/log (fingerprints only); shared
-MySQL/Redis for both deployment paths (`deploy/infra.yml`; wipe procedure in
-its header comment). Deploy token is auto-generated into the credentials
-file on first start when absent.
+no plaintext secrets in any response/log (fingerprints only); MySQL/Redis
+infrastructure stands per selected deployment path (`deploy/infra.yml`; wipe
+procedure in its header comment). Deploy token is auto-generated into the
+credentials file on first start when absent.
 
 ## Quick start
 
 1. Run the service; on first start it auto-generates `config.yaml` with the
    default values from `internal/models/config.go` (`DefaultConfig`):
-   listen `:2770`, artifacts root `./data/artifacts`, manifest path
+   listen `:18080`, artifacts root `./data/artifacts`, manifest path
    `./data/manifest.json`. Edit the generated file to override them.
 2. Create `data/manifest.json` if you want to provide version data immediately.
    You can start from `examples/manifest.v1.json`.
@@ -246,11 +247,11 @@ Authoritative deployment facts for the Deployer itself live in
 (`manager: aapanel` = panel-managed, orchestrator read-only):
 
 - Deployment port `:18080`, loopback-only (per
-  `deploy/config/ha-services-deployer.yaml.tmpl`; the bare-local first-run
-  default above is `:2770`); health probe `GET /healthz`.
+  `deploy/config/ha-services-deployer.yaml.tmpl`; identical to the bare-local
+  first-run default); health probe `GET /healthz`.
 - No service dependencies (local-file delivery service); no database, no Redis.
 - Config file `config.yaml` (template version 1; the code auto-migrates the
-  file to v2 on load).
+  file to the current version on load).
 - Data dir: `./data` (artifacts root, version manifest, orchestration state).
 - External dependency declarations (reachability-only) for MySQL/Redis live in
   [`deploy/manifests/`](deploy/manifests/).
