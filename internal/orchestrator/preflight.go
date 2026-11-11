@@ -185,7 +185,7 @@ func (o *Orchestrator) preflightScope(ctx context.Context, ms []*manifest.Manife
 				Detail: fmt.Sprintf("manager=%s: read-only, write-side checks skipped", eff.manager)})
 			continue
 		}
-		o.checkInstallPaths(m, eff, mode, report)
+		o.checkInstallPaths(ctx, m, eff, mode, report)
 		o.checkEnvFile(m, report)
 		o.checkSmokeSecrets(m, report)
 		o.checkPorts(ctx, m, eff, report)
@@ -311,9 +311,24 @@ func (o *Orchestrator) checkExternalSelf(ctx context.Context, m *manifest.Manife
 		Detail: fmt.Sprintf("external reachable (%s)", m.Facts.External.Host)})
 }
 
+// effectiveDeployVersion 报告本次部署真正落版本目录的版本号：
+// grail 来源为上游解析出的版本（latest 是动态结果，可能不等于清单
+// 声明的 service_version）；其余来源为 service_version。解析失败时
+// 回退 service_version——错误本身由 artifact 预检显式报告。
+func (o *Orchestrator) effectiveDeployVersion(ctx context.Context, m *manifest.Manifest) string {
+	if m.Baremetal.Artifact.Source != "grail" {
+		return m.ServiceVersion
+	}
+	v, err := artifact.ResolveGrailVersion(ctx, m, o.creds)
+	if err != nil {
+		return m.ServiceVersion
+	}
+	return v
+}
+
 // checkInstallPaths 检查安装根目录、版本目录可写性与 current 软链形态。
 // 不存在的路径向上找最近存在的祖先探写权限：可写即"部署时将被创建"。
-func (o *Orchestrator) checkInstallPaths(m *manifest.Manifest, eff effective, mode string, report *PreflightReport) {
+func (o *Orchestrator) checkInstallPaths(ctx context.Context, m *manifest.Manifest, eff effective, mode string, report *PreflightReport) {
 	root := eff.root
 
 	if detail, err := probeWritable(root); err != nil {
@@ -323,7 +338,7 @@ func (o *Orchestrator) checkInstallPaths(m *manifest.Manifest, eff effective, mo
 	}
 
 	if mode == "deploy" {
-		relDir := releaseDir(root, m.ServiceVersion)
+		relDir := releaseDir(root, o.effectiveDeployVersion(ctx, m))
 		if detail, err := probeWritable(relDir); err != nil {
 			report.add(CheckResult{Project: m.Project, Name: "version-dir", Level: LevelBlocker, Detail: err.Error()})
 		} else {
@@ -524,7 +539,7 @@ func (o *Orchestrator) checkPorts(ctx context.Context, m *manifest.Manifest, eff
 // checkDiskSpace 复用 artifact 包的磁盘预检（含差额报告）。
 // 产物大小未知时降级为警告：落盘安全性仍由临时文件 + sha256 保证。
 func (o *Orchestrator) checkDiskSpace(ctx context.Context, m *manifest.Manifest, eff effective, report *PreflightReport) {
-	destDir := releaseDir(eff.root, m.ServiceVersion)
+	destDir := releaseDir(eff.root, o.effectiveDeployVersion(ctx, m))
 	checked, err := diskSpaceCheck(ctx, m, destDir, o.creds)
 	if err != nil {
 		report.add(CheckResult{Project: m.Project, Name: "disk-space", Level: LevelBlocker, Detail: err.Error()})

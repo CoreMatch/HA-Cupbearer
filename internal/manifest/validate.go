@@ -601,13 +601,16 @@ func (m *Manifest) EffectiveChecksumAsset() string {
 	return m.EffectiveAsset() + ".sha256"
 }
 
-// EffectiveGrailVersion 返回 grail 来源的版本选择：缺省 latest。
-// 版本号是不透明标识符——本方法不做任何解析或比较。
+// EffectiveGrailVersion 返回 grail 来源的版本选择：缺省 latest；
+// 支持 {service_version} 占位（与 release.tag 同约定），便于把清单
+// 声明的版本与上游取件版本钉成同一个值。版本号是不透明标识符——
+// 本方法除占位替换外不做任何解析或比较。
 func (m *Manifest) EffectiveGrailVersion() string {
-	if v := m.Baremetal.Artifact.Grail.Version; v != "" {
-		return v
+	v := m.Baremetal.Artifact.Grail.Version
+	if v == "" {
+		return "latest"
 	}
-	return "latest"
+	return versionTokenRe.ReplaceAllString(v, m.ServiceVersion)
 }
 
 // EffectiveGrailPlatform 返回 grail 来源的平台令牌：缺省 linux-amd64

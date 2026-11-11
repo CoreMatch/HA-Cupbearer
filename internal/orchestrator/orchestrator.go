@@ -550,6 +550,12 @@ func (o *Orchestrator) executeProject(ctx context.Context, run *Run, raw *manife
 
 	if run.Options.DryRun {
 		res.Outcome = OutcomeDryRun
+		dryVersion := m.ServiceVersion
+		if m.Baremetal.Artifact.Source == "grail" {
+			if v, err := artifact.ResolveGrailVersion(ctx, m, o.creds); err == nil {
+				dryVersion = v
+			}
+		}
 		res.Steps = append(res.Steps,
 			StepRecord{Name: "artifact", OK: true, Detail: "dry-run: stage " + m.Baremetal.Artifact.Source},
 		)
@@ -558,7 +564,7 @@ func (o *Orchestrator) executeProject(ctx context.Context, run *Run, raw *manife
 				Detail: "dry-run: mkdir " + filepath.Join(eff.root, shared)})
 		}
 		res.Steps = append(res.Steps,
-			StepRecord{Name: "symlink", OK: true, Detail: "dry-run: current -> releases/" + m.ServiceVersion},
+			StepRecord{Name: "symlink", OK: true, Detail: "dry-run: current -> releases/" + dryVersion},
 			StepRecord{Name: "ensure-script", OK: true, Detail: "dry-run: upsert " + m.Project},
 			StepRecord{Name: "restart", OK: true, Detail: "dry-run: restart via tinyvisor"},
 			StepRecord{Name: "health", OK: true, Detail: "dry-run: probe " + mustProbeURL(o, m)},
@@ -586,8 +592,22 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 		return err == nil
 	}
 
+	// 0. 生效版本：grail 来源以解析出的上游版本为准（latest 是动态结果，
+	// 可能不等于清单声明的 service_version）；其余来源沿用 service_version。
+	deployVersion := m.ServiceVersion
+	if m.Baremetal.Artifact.Source == "grail" {
+		v, err := artifact.ResolveGrailVersion(ctx, m, o.creds)
+		if !addStep("resolve", err, fmt.Sprintf("grail %s/%s -> version %s",
+			m.Baremetal.Artifact.Grail.Project, m.Baremetal.Artifact.Grail.Channel, v)) {
+			res.Outcome = OutcomeFailed
+			res.Detail = "grail version resolve failed"
+			return
+		}
+		deployVersion = v
+	}
+
 	// 1. 产物：下载/复制 + sha256 校验 + 幂等落版本目录。
-	relDir := releaseDir(eff.root, m.ServiceVersion)
+	relDir := releaseDir(eff.root, deployVersion)
 	sha, err := artifact.Stage(ctx, m, relDir, o.creds)
 	if !addStep("artifact", err, fmt.Sprintf("stage %s (sha256 %s)", m.Baremetal.Artifact.Source, shortSHA(sha))) {
 		res.Outcome = OutcomeFailed
@@ -608,16 +628,16 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 
 	// 2. 软链：原子切换 current -> releases/<version>。
 	activeBefore := readActiveVersion(eff.root)
-	linkChanged := activeBefore != m.ServiceVersion
+	linkChanged := activeBefore != deployVersion
 	if linkChanged {
-		err = switchSymlink(eff.root, m.ServiceVersion)
+		err = switchSymlink(eff.root, deployVersion)
 	}
-	if !addStep("symlink", err, fmt.Sprintf("current: %s -> %s", orNone(activeBefore), m.ServiceVersion)) {
+	if !addStep("symlink", err, fmt.Sprintf("current: %s -> %s", orNone(activeBefore), deployVersion)) {
 		res.Outcome = OutcomeFailed
 		res.Detail = "symlink switch failed"
 		return
 	}
-	res.ActiveVersion = m.ServiceVersion
+	res.ActiveVersion = deployVersion
 
 	// 3. 脚本：按名幂等登记（内容漂移才写）。
 	scriptDrift, err := o.upsertScript(ctx, m, eff)
@@ -633,7 +653,7 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 		res.Outcome = OutcomeUpToDate
 		res.Detail = "version active, script aligned, health ok: no action"
 		addStep("activate", nil, "skipped (up-to-date)")
-		pruneReleases(eff.root, m.ServiceVersion, m.Baremetal.Install.KeepReleases)
+		pruneReleases(eff.root, deployVersion, m.Baremetal.Install.KeepReleases)
 		return
 	}
 
@@ -665,9 +685,9 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 		}
 	}
 
-	pruneReleases(eff.root, m.ServiceVersion, m.Baremetal.Install.KeepReleases)
+	pruneReleases(eff.root, deployVersion, m.Baremetal.Install.KeepReleases)
 	res.Outcome = OutcomeDeployed
-	res.Detail = fmt.Sprintf("version %s active and healthy", m.ServiceVersion)
+	res.Detail = fmt.Sprintf("version %s active and healthy", deployVersion)
 }
 
 // autoRollback 健康判定失败时切回上一版本并重启（默认开启）。
