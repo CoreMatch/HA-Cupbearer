@@ -12,7 +12,7 @@ import (
 const (
 	KeySuperClientSecret     = "HRPAUTH_SUPER_CLIENT_SECRET"
 	KeyWinnerProxySecret     = "WINNERPROXY_CLIENT_SECRET"
-	KeyYGGSecret              = "YGG_CLIENT_SECRET"
+	KeyYGGSecret             = "YGG_CLIENT_SECRET"
 	KeySkinProxySecret       = "HASKINPROXY_CLIENT_SECRET"
 	KeySDKHandlerSecret      = "SDKHANDLER_CLIENT_SECRET"
 	KeySkinLibSecret         = "HASKINLIB_CLIENT_SECRET"

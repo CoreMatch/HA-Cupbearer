@@ -40,9 +40,9 @@ const (
 	mysqlContainerPort = 3306
 	redisContainerPort = 6379
 
-	infraReadyTimeout  = 180 * time.Second
-	infraPollInterval  = 2 * time.Second
-	probeTimeout       = 3 * time.Second
+	infraReadyTimeout = 180 * time.Second
+	infraPollInterval = 2 * time.Second
+	probeTimeout      = 3 * time.Second
 )
 
 // InfraDocker 是基础设施步骤需要的容器运行时操作面（docker.CLI 实现）。
@@ -332,7 +332,7 @@ func ensureRedis(ctx context.Context, in *Inputs, store *Store, dk InfraDocker, 
 
 // launchInfra 经 compose 幂等拉起基础设施（up -d 对已在跑的容器零动作）。
 // 凭据经进程环境注入，不落任何文件。失败时把 compose 输出尾部带回
-//（响亮失败：不允许只剩一句 "exit status 1"）。
+// （响亮失败：不允许只剩一句 "exit status 1"）。
 func launchInfra(ctx context.Context, dk InfraDocker, composeFile string, mysqlPort, redisPort int, mysqlRootPW, redisPW string) (string, error) {
 	env := []string{
 		"MYSQL_HOST_PORT=" + strconv.Itoa(mysqlPort),

@@ -237,7 +237,7 @@ func (c *CLI) LoadAndTag(ctx context.Context, tarball, tag string) error {
 }
 
 // Pull 从 registry 拉取镜像。鉴权完全沿用宿主 docker 的登录态
-//（~/.docker/config.json 或其配置的 credential helper；rootless 下即
+// （~/.docker/config.json 或其配置的 credential helper；rootless 下即
 // 编排器运行用户自己的登录）——本层不持有、不注入、不写死任何凭据。
 // 失败按原因分类给出可读错误：认证失败/无权限/引用不存在/限流/网络，
 // 各是各的问题，绝不吞成一句 "pull failed"。
@@ -412,7 +412,7 @@ func (c *CLI) composeArgs(files []string, sub ...string) []string {
 }
 
 // ComposeUp 执行 `docker compose -f ... up -d` 并返回合并输出
-//（stderr 常含进度信息，出错时一并给出以便如实回报）。
+// （stderr 常含进度信息，出错时一并给出以便如实回报）。
 func (c *CLI) ComposeUp(ctx context.Context, files []string) (string, error) {
 	return c.ComposeUpEnv(ctx, files, nil)
 }

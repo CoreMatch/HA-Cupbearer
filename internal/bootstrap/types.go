@@ -42,9 +42,9 @@ type Inputs struct {
 type Infra struct {
 	// Launch 允许在探测不到可用实例时一键拉起容器（默认 true）。
 	// 置 false 则只接管已有实例，探测不到即报缺。
-	Launch *bool `json:"launch"`
-	MySQLHostPort int `json:"mysql_host_port"` // 宿主发布口，默认 3306
-	RedisHostPort int `json:"redis_host_port"` // 宿主发布口，默认 6379
+	Launch        *bool `json:"launch"`
+	MySQLHostPort int   `json:"mysql_host_port"` // 宿主发布口，默认 3306
+	RedisHostPort int   `json:"redis_host_port"` // 宿主发布口，默认 6379
 }
 
 // InfraLaunch 报告是否允许拉起容器（nil = 允许）。
@@ -62,13 +62,13 @@ type Targets struct {
 
 // Database 描述 MySQL 管理口连接与库规划。
 type Database struct {
-	AdminHost     string    `json:"admin_host"`
-	AdminPort     int       `json:"admin_port"`
-	AdminUser     string    `json:"admin_user"`
-	AdminPassword string    `json:"admin_password"`
-	AppUser       string    `json:"app_user"`      // 默认 hrpa；口令由本层生成
-	ManageUser    *bool     `json:"manage_user"`   // 默认 true：建账号并授权
-	Names         DBNames   `json:"names"`
+	AdminHost     string  `json:"admin_host"`
+	AdminPort     int     `json:"admin_port"`
+	AdminUser     string  `json:"admin_user"`
+	AdminPassword string  `json:"admin_password"`
+	AppUser       string  `json:"app_user"`    // 默认 hrpa；口令由本层生成
+	ManageUser    *bool   `json:"manage_user"` // 默认 true：建账号并授权
+	Names         DBNames `json:"names"`
 }
 
 // DBNames 是四个独占库的库名（schema_migrations 簿记表结构互不兼容，
@@ -99,10 +99,10 @@ type PublicURLs struct {
 }
 
 // InternalURLs 是主机内服务发现地址的可选覆盖；留空时按形态推导
-//（容器 = compose 网络名，裸金属 = 127.0.0.1+声明端口）。
+// （容器 = compose 网络名，裸金属 = 127.0.0.1+声明端口）。
 type InternalURLs struct {
-	HRPAuth  string `json:"hrpauth"`
-	YGG      string `json:"ygg"`
+	HRPAuth   string `json:"hrpauth"`
+	YGG       string `json:"ygg"`
 	Cupbearer string `json:"cupbearer"`
 }
 
@@ -129,7 +129,7 @@ type ClientIDs struct {
 
 // Paths 是产物落点（默认相对进程工作目录，与 compose 模板的位置约定一致）。
 type Paths struct {
-	EnvFile   string `json:"env_file"`   // 默认 deploy/.env
+	EnvFile    string `json:"env_file"`    // 默认 deploy/.env
 	SecretsDir string `json:"secrets_dir"` // 默认 deploy/secrets
 	// BaremetalOutputs 按服务名给出渲染输出路径（如
 	// {"hrpauth": "/www/wwwroot/ha/config.yaml"}）；向导侧用清单预填。
@@ -139,23 +139,23 @@ type Paths struct {
 // Defaults 是与 .env.example / 模板 / presence 约定逐字对齐的默认值。
 // 改这里必须同步 deploy/.env.example 与 knowledge/0015。
 const (
-	DefaultAppDBUser       = "hrpa"
-	DefaultHRPAuthDB       = "hrpa"
-	DefaultYGGDB           = "ygg"
-	DefaultHASkinLibDB     = "haskinlib"
-	DefaultMCADB           = "matchcorearena"
-	DefaultSuperClientID   = "hrpauth-internal-super"
-	DefaultPublicClientID  = "hrpauth-webui"
-	DefaultWinnerProxyID   = "WinnerProxy"
-	DefaultYGGClientID     = "HRPAuth-Yggdrasil-API"
-	DefaultSkinProxyID     = "HASkinProxy"
-	DefaultSDKHandlerID    = "hrpauth-webui-sdkhandler"
-	DefaultSkinLibID       = "haskinlib"
-	DefaultEnvFile         = "deploy/.env"
-	DefaultSecretsDir      = "deploy/secrets"
-	DefaultTemplateDir     = "deploy/config"
-	DefaultRedisHost       = "127.0.0.1"
-	DefaultSMTPFromEmail   = "no-reply@example.com"
+	DefaultAppDBUser      = "hrpa"
+	DefaultHRPAuthDB      = "hrpa"
+	DefaultYGGDB          = "ygg"
+	DefaultHASkinLibDB    = "haskinlib"
+	DefaultMCADB          = "matchcorearena"
+	DefaultSuperClientID  = "hrpauth-internal-super"
+	DefaultPublicClientID = "hrpauth-webui"
+	DefaultWinnerProxyID  = "WinnerProxy"
+	DefaultYGGClientID    = "HRPAuth-Yggdrasil-API"
+	DefaultSkinProxyID    = "HASkinProxy"
+	DefaultSDKHandlerID   = "hrpauth-webui-sdkhandler"
+	DefaultSkinLibID      = "haskinlib"
+	DefaultEnvFile        = "deploy/.env"
+	DefaultSecretsDir     = "deploy/secrets"
+	DefaultTemplateDir    = "deploy/config"
+	DefaultRedisHost      = "127.0.0.1"
+	DefaultSMTPFromEmail  = "no-reply@example.com"
 )
 
 // DefaultRedisPort / DefaultSMTPPort 等数值默认。

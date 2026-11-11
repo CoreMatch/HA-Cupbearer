@@ -20,11 +20,11 @@ import (
 
 // KeyResult 是密钥步骤的结论。
 type KeyResult struct {
-	Dir         string `json:"dir"`
-	Generated   bool   `json:"generated"`             // 本次新生成
-	Reused      bool   `json:"reused"`                // 两个文件都在，原样保留
-	PublicDerived bool `json:"public_derived,omitempty"` // 仅私钥在，公钥由私钥推导补齐
-	Fingerprint string `json:"fingerprint"`           // 私钥指纹
+	Dir           string `json:"dir"`
+	Generated     bool   `json:"generated"`                // 本次新生成
+	Reused        bool   `json:"reused"`                   // 两个文件都在，原样保留
+	PublicDerived bool   `json:"public_derived,omitempty"` // 仅私钥在，公钥由私钥推导补齐
+	Fingerprint   string `json:"fingerprint"`              // 私钥指纹
 }
 
 // EnsureSigningKeys 幂等地保证密钥对在场：

@@ -65,13 +65,13 @@ func (h *Handler) GetDeployManifests(c *gin.Context) {
 	manifests, rep := h.orch.Load()
 
 	type view struct {
-		Project         string `json:"project"`
-		Kind            string `json:"kind"`
-		DisplayName     string `json:"display_name"`
-		Group           string `json:"group"`
-		ServiceVersion  string `json:"service_version"`
-		Manager         string `json:"manager"`
-		SourcePath      string `json:"source_path"`
+		Project        string `json:"project"`
+		Kind           string `json:"kind"`
+		DisplayName    string `json:"display_name"`
+		Group          string `json:"group"`
+		ServiceVersion string `json:"service_version"`
+		Manager        string `json:"manager"`
+		SourcePath     string `json:"source_path"`
 	}
 	views := make([]view, 0, len(manifests))
 	for _, m := range manifests {

@@ -253,11 +253,11 @@ type Run struct {
 
 // RunSummary 是列表视图。
 type RunSummary struct {
-	ID         string     `json:"id"`
-	State      string     `json:"state"`
-	DryRun     bool       `json:"dry_run"`
-	StartedAt  time.Time  `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ID         string         `json:"id"`
+	State      string         `json:"state"`
+	DryRun     bool           `json:"dry_run"`
+	StartedAt  time.Time      `json:"started_at"`
+	FinishedAt *time.Time     `json:"finished_at,omitempty"`
 	StepCounts map[string]int `json:"step_counts"`
 }
 

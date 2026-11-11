@@ -37,29 +37,29 @@ type Config struct {
 }
 
 const (
-	DefaultListen    = "127.0.0.1:18081"
-	DefaultWorkDir   = "./data/maintenance-view"
-	maxPortProbe     = 10
-	healthTimeout    = 3 * time.Second
-	maxFastRestarts  = 5
+	DefaultListen     = "127.0.0.1:18081"
+	DefaultWorkDir    = "./data/maintenance-view"
+	maxPortProbe      = 10
+	healthTimeout     = 3 * time.Second
+	maxFastRestarts   = 5
 	fastRestartWindow = 2 * time.Minute
 )
 
 // Manager 监督至多一个 MV 实例。
 type Manager struct {
-	cfg           Config
-	cupbearerURL   string
-	deployToken   string
+	cfg          Config
+	cupbearerURL string
+	deployToken  string
 
-	mu      sync.Mutex
-	mode    string // managed | reused | disabled | unavailable
-	address string
-	pid     int
-	detail  string
-	cmd     *exec.Cmd
-	logFile *os.File
+	mu       sync.Mutex
+	mode     string // managed | reused | disabled | unavailable
+	address  string
+	pid      int
+	detail   string
+	cmd      *exec.Cmd
+	logFile  *os.File
 	stopping bool
-	stopCh  chan struct{}
+	stopCh   chan struct{}
 }
 
 // New 构造监督器。cupbearerURL 是 MV 要回连的 Cupbearer 地址，

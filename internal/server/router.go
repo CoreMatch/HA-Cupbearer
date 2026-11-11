@@ -15,8 +15,8 @@ type Handler struct {
 	cfg         *models.Config
 	orch        *orchestrator.Orchestrator // nil = 编排关闭（零回归）
 	deployToken string
-	boot        *bootstrap.Engine  // nil = 初始化层未装配
-	mv          MVStatusSource     // nil = MV 监督未装配
+	boot        *bootstrap.Engine // nil = 初始化层未装配
+	mv          MVStatusSource    // nil = MV 监督未装配
 }
 
 func NewHandler(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken string, boot *bootstrap.Engine, mv MVStatusSource) *Handler {

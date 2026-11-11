@@ -48,7 +48,7 @@ type OrchestrationConfig struct {
 	// StateDir 存放运行状态与运行记录（续跑依据）。默认 <data>/deploy。
 	StateDir string `yaml:"state_dir" json:"state_dir"`
 	// ProbeHost 为健康探测目标主机；编排器与被部署服务同机，默认 127.0.0.1。
-	ProbeHost string `yaml:"probe_host" json:"probe_host"`
+	ProbeHost string                `yaml:"probe_host" json:"probe_host"`
 	Tinyvisor TinyvisorTargetConfig `yaml:"tinyvisor" json:"tinyvisor"`
 	// CredentialsPath 指向本地凭据文件（0600，不进仓库）：
 	// tinyvisor_api_key / deploy_token / github_token。
