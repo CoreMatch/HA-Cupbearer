@@ -34,7 +34,7 @@ x-common-logging: &common-logging
 services:
   hrpauth:
     build:
-      context: ../HRPAuth
+      context: ../../../hrpauth/HRPAuth
     image: ha/hrpauth:${VERSION:-latest}
     restart: unless-stopped
     ports:
@@ -47,6 +47,10 @@ services:
       start_period: 60s
     environment:
       <<: *common-env
+      # HRPAuth/YGG/HASkinLib/MCA 各自独占数据库：四家的 schema_migrations
+      # 簿记表结构互不兼容，共库必互踩（冒烟实测：haskinlib 先写 version 8，
+      # hrpauth 迁移链即断）。库需预建（字符集 utf8mb4）。
+      DB_NAME: ${HRPAUTH_DB_NAME:-hrpa}
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yaml
       HRPAUTH_URL: http://hrpauth:2778
@@ -91,7 +95,7 @@ services:
 
   hrpauth-yggdrasil-api:
     build:
-      context: ../HRPAuth-Yggdrasil-API
+      context: ../../../hrpauth/HRPAuth-Yggdrasil-API
     image: ha/hrpauth-yggdrasil-api:${VERSION:-latest}
     restart: unless-stopped
     ports:
@@ -104,6 +108,8 @@ services:
       start_period: 30s
     environment:
       <<: *common-env
+      # 独立库（与 hrpauth 段的说明同理：schema_migrations 结构互不兼容）。
+      DB_NAME: ${YGG_DB_NAME:-ygg}
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yaml
       HRPAUTH_URL: http://hrpauth:2778
@@ -131,7 +137,7 @@ services:
 
   haskinlib:
     build:
-      context: ../HASkinLib
+      context: ../../../hrpauth/HASkinLib
     image: ha/haskinlib:${VERSION:-latest}
     restart: unless-stopped
     ports:
@@ -144,6 +150,8 @@ services:
       start_period: 30s
     environment:
       <<: *common-env
+      # 独立库（与 hrpauth 段的说明同理：schema_migrations 结构互不兼容）。
+      DB_NAME: ${HASKINLIB_DB_NAME:-haskinlib}
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yaml
       # 模板 core_api.base_url 消费（运行时调 HRPAuth /internal/verify-token 等）。
@@ -163,7 +171,7 @@ services:
 
   haskinproxy:
     build:
-      context: ../HASkinProxy
+      context: ../../../hrpauth/HASkinProxy
     image: ha/haskinproxy:${VERSION:-latest}
     restart: unless-stopped
     ports:
@@ -201,7 +209,7 @@ services:
 
   winnerproxy:
     build:
-      context: ../WinnerProxy
+      context: ../../../hrpauth/WinnerProxy
     image: ha/winnerproxy:${VERSION:-latest}
     restart: unless-stopped
     ports:
@@ -247,7 +255,7 @@ services:
 
   mca-server:
     build:
-      context: ../MatchCoreArena-Server
+      context: ../../../matchcore/MatchCoreArena-Server
     image: ha/mca-server:${VERSION:-latest}
     restart: unless-stopped
     ports:
@@ -260,6 +268,10 @@ services:
       start_period: 30s
     environment:
       <<: *common-env
+      # MCA 必须独占数据库：其 schema_migrations 簿记表带 service 列，
+      # 与 HRPAuth/HASkinLib 共库会互踩（生产形态即独立库）。
+      # 覆盖 common-env 的 DB_NAME；库由 DBA 预建（字符集 utf8mb4）。
+      DB_NAME: ${MCA_DB_NAME:-matchcorearena}
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config/config.yaml
       CONFIG_PATH: /app/config/config.yaml
@@ -290,7 +302,7 @@ services:
 
   ha-webui-sdkhandler:
     build:
-      context: ../HA-WebUI-SDKHandler
+      context: ../../../hrpauth/HA-WebUI-SDKHandler
     image: ha/ha-webui-sdkhandler:${VERSION:-latest}
     restart: unless-stopped
     ports:
@@ -334,7 +346,7 @@ services:
 
   ha-services-deployer:
     build:
-      context: ../HA-Services-Deployer
+      context: ..
     image: ha/ha-services-deployer:${VERSION:-latest}
     restart: unless-stopped
     ports:
@@ -358,7 +370,7 @@ services:
 
   ha-services-maintenance-view:
     build:
-      context: ../HA-Services-MaintenanceView
+      context: ../../../maintanance/HA-Services-MaintenanceView
     image: ha/ha-services-maintenance-view:${VERSION:-latest}
     restart: unless-stopped
     ports:
