@@ -38,7 +38,7 @@ x-common-logging: &common-logging
 
 services:
   hrpauth:
-    image: limeight/ha-hrpauth@sha256:b279c9a020b89ec834437387b506ec3c0743675754538784207cc0ea86e36695
+    image: limeight/ha-hrpauth@sha256:7aeb4bacb81ef45098ae167d47d7868eae67e36a0086e8bfed7e19a4bfa45288
     restart: unless-stopped
     ports:
       - "${HRPAUTH_PORT:-2778}:2778"
@@ -57,6 +57,9 @@ services:
       CONFIG_TEMPLATE: /etc/ha/config.yaml.tmpl
       RENDERED_CONFIG: /app/config.yaml
       HRPAUTH_URL: http://hrpauth:2778
+      # YGG 内部地址（模板 yggdrasil_api.base_url 消费）：默认 compose 网络
+      # 直连，与历史硬编码值逐字一致；裸金属渲染时由初始化层改 127.0.0.1。
+      YGG_INTERNAL_URL: ${YGG_INTERNAL_URL:-http://hrpauth-yggdrasil-api:2770}
       HRPAUTH_PUBLIC_URL: ${HRPAUTH_PUBLIC_URL}
       HRPAUTH_FRONTEND_URL: ${HRPAUTH_FRONTEND_URL}
       HRPAUTH_PUBLIC_CLIENT_ID: ${HRPAUTH_PUBLIC_CLIENT_ID:?missing HRPAUTH_PUBLIC_CLIENT_ID - set it in deploy/.env (see deploy/.env.example)}
@@ -336,7 +339,7 @@ services:
     logging: *common-logging
 
   ha-services-deployer:
-    image: limeight/ha-services-deployer@sha256:eadc826514a15220e202e86df09fe57255fa6f25bfdd71a7207c35ad0bbc4341
+    image: limeight/ha-services-deployer@sha256:c115937ca8c365fa018c4f32442455a0d9f88eb8193ac3835e8d2f505f43edf7
     restart: unless-stopped
     ports:
       # 内部下发服务：MaintenanceView 经 compose 网络访问，默认仅绑定回环。
@@ -358,7 +361,7 @@ services:
     logging: *common-logging
 
   ha-services-maintenance-view:
-    image: limeight/ha-services-maintenance-view@sha256:52ee8d3d1a0af9695f815870b0f25ecbef2e9141c8e65735585750ed414b908a
+    image: limeight/ha-services-maintenance-view@sha256:94145305fdd6c797fb7bdb227351d253086677bd8c52a58aead45e689de235d3
     restart: unless-stopped
     ports:
       # 运维面板（半成品、无鉴权）：默认仅绑定回环。
