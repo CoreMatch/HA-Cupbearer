@@ -48,7 +48,7 @@ Record the verified shape:
   `listen: ":18080"`; `deploy/docker-compose.yml (field: DEPLOYER_PORT)` maps
   `${DEPLOYER_PORT:-18080}`), and the Dockerfile `EXPOSE 18080`. HA-Contract's
   download-URL example also uses `18080`
-  (/home/lnb/Desktop/HA/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Download URL Resolution)).
+  (/home/lnb/Desktop/HA/maintanance/HA-Services-Deployer/knowledge/0006-version-manifest.md (field: Download URL Resolution)).
   So `:2770` is only the local-dev default; operators should expect `18080`
   in composed deployments.
 - Relative paths (`./data/...`) resolve against the process working
