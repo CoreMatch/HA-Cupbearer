@@ -610,7 +610,7 @@ func TestPreflightOptionalDependencyDownIsWarning(t *testing.T) {
 func TestPreflightDiskInsufficientIsBlocker(t *testing.T) {
 	env := newPreflightEnv(t)
 	orig := diskSpaceCheck
-	diskSpaceCheck = func(ctx context.Context, m *manifest.Manifest, destDir, token string) (bool, error) {
+	diskSpaceCheck = func(ctx context.Context, m *manifest.Manifest, destDir string, creds *config.Credentials) (bool, error) {
 		return true, fmt.Errorf("insufficient disk space at %s: need 2.0 GiB, available 1.0 GiB, short by 1.0 GiB", destDir)
 	}
 	defer func() { diskSpaceCheck = orig }()
@@ -628,7 +628,7 @@ func TestPreflightDiskInsufficientIsBlocker(t *testing.T) {
 func TestPreflightDiskUnknownSizeIsWarning(t *testing.T) {
 	env := newPreflightEnv(t)
 	orig := diskSpaceCheck
-	diskSpaceCheck = func(ctx context.Context, m *manifest.Manifest, destDir, token string) (bool, error) {
+	diskSpaceCheck = func(ctx context.Context, m *manifest.Manifest, destDir string, creds *config.Credentials) (bool, error) {
 		return false, nil
 	}
 	defer func() { diskSpaceCheck = orig }()
@@ -832,7 +832,7 @@ func TestDryRunRecordsPreflightReport(t *testing.T) {
 func TestPreflightRollbackModeSkipsArtifactChecks(t *testing.T) {
 	env := newPreflightEnv(t)
 	orig := diskSpaceCheck
-	diskSpaceCheck = func(ctx context.Context, m *manifest.Manifest, destDir, token string) (bool, error) {
+	diskSpaceCheck = func(ctx context.Context, m *manifest.Manifest, destDir string, creds *config.Credentials) (bool, error) {
 		return true, errors.New("disk check must not run in rollback mode")
 	}
 	defer func() { diskSpaceCheck = orig }()

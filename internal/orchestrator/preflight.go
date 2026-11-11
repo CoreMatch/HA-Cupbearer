@@ -191,7 +191,7 @@ func (o *Orchestrator) preflightScope(ctx context.Context, ms []*manifest.Manife
 		o.checkPorts(ctx, m, eff, report)
 		if mode == "deploy" {
 			o.checkDiskSpace(ctx, m, eff, report)
-			o.checkArtifact(m, report)
+			o.checkArtifact(ctx, m, report)
 		}
 		o.checkDependencies(ctx, m, byProject, scopeSet, report)
 	}
@@ -525,7 +525,7 @@ func (o *Orchestrator) checkPorts(ctx context.Context, m *manifest.Manifest, eff
 // 产物大小未知时降级为警告：落盘安全性仍由临时文件 + sha256 保证。
 func (o *Orchestrator) checkDiskSpace(ctx context.Context, m *manifest.Manifest, eff effective, report *PreflightReport) {
 	destDir := releaseDir(eff.root, m.ServiceVersion)
-	checked, err := diskSpaceCheck(ctx, m, destDir, o.creds.GithubToken)
+	checked, err := diskSpaceCheck(ctx, m, destDir, o.creds)
 	if err != nil {
 		report.add(CheckResult{Project: m.Project, Name: "disk-space", Level: LevelBlocker, Detail: err.Error()})
 		return
@@ -538,21 +538,29 @@ func (o *Orchestrator) checkDiskSpace(ctx context.Context, m *manifest.Manifest,
 	report.add(CheckResult{Project: m.Project, Name: "disk-space", OK: true, Detail: "enough free space for artifact at " + destDir})
 }
 
-// checkArtifact 检查 local_path 来源的产物本体与校验和旁路（部署模式）：
-// 流水线（artifact.Stage）对"产物在位 + 同名 .sha256 旁路 + 两者内容一致"
-// 是硬要求，缺一必在 artifact 步失败——前置检查必须提前查出，不让人
-// 跑到流水线第一步才撞见。ci_release 为网络来源，其可达性由磁盘预检
-// 的 HEAD 与流水线自身覆盖，不在本检查范围。
-func (o *Orchestrator) checkArtifact(m *manifest.Manifest, report *PreflightReport) {
-	if m.Baremetal.Artifact.Source != "local_path" {
-		return
+// checkArtifact 检查产物来源的可部署性（部署模式）：
+//   - local_path：产物本体 + 同名 .sha256 旁路 + 两者内容一致，缺一必在
+//     流水线 artifact 步失败——前置检查必须提前查出；
+//   - grail：解析 + 端到端验签（信任锚 → 密钥环 → 项目密钥 → 清单），
+//     失败即阻断；yank 的版本直接拒绝，宽限期版本允许钉住部署并给警告；
+//   - ci_release：网络来源，可达性由磁盘预检的 HEAD 与流水线自身覆盖。
+func (o *Orchestrator) checkArtifact(ctx context.Context, m *manifest.Manifest, report *PreflightReport) {
+	switch m.Baremetal.Artifact.Source {
+	case "local_path":
+		if err := artifact.VerifyLocalArtifact(m); err != nil {
+			report.add(CheckResult{Project: m.Project, Name: "artifact", Level: LevelBlocker, Detail: err.Error()})
+			return
+		}
+		report.add(CheckResult{Project: m.Project, Name: "artifact", OK: true,
+			Detail: fmt.Sprintf("local_path artifact %s present; checksum sidecar matches", m.ResolveLocalPath())})
+	case "grail":
+		detail, err := artifact.VerifyGrailSource(ctx, m, o.creds)
+		if err != nil {
+			report.add(CheckResult{Project: m.Project, Name: "artifact", Level: LevelBlocker, Detail: err.Error()})
+			return
+		}
+		report.add(CheckResult{Project: m.Project, Name: "artifact", OK: true, Detail: detail})
 	}
-	if err := artifact.VerifyLocalArtifact(m); err != nil {
-		report.add(CheckResult{Project: m.Project, Name: "artifact", Level: LevelBlocker, Detail: err.Error()})
-		return
-	}
-	report.add(CheckResult{Project: m.Project, Name: "artifact", OK: true,
-		Detail: fmt.Sprintf("local_path artifact %s present; checksum sidecar matches", m.ResolveLocalPath())})
 }
 
 // checkDependencies 检查 Manifest 声明的依赖服务当前是否可达：

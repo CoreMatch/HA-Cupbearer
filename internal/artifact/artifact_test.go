@@ -42,7 +42,7 @@ func TestStage_LocalPath_VerifyAndIdempotent(t *testing.T) {
 	m, _ := localPathManifest(t, content)
 	destDir := t.TempDir()
 
-	sha1, err := Stage(context.Background(), m, destDir, "")
+	sha1, err := Stage(context.Background(), m, destDir, nil)
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestStage_LocalPath_VerifyAndIdempotent(t *testing.T) {
 	}
 
 	// 幂等：再次 Stage 不报错且不改写文件
-	if _, err := Stage(context.Background(), m, destDir, ""); err != nil {
+	if _, err := Stage(context.Background(), m, destDir, nil); err != nil {
 		t.Fatalf("idempotent stage: %v", err)
 	}
 	if sha1 == "" {
@@ -76,7 +76,7 @@ func TestStage_LocalPath_ShaMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	destDir := t.TempDir()
-	if _, err := Stage(context.Background(), m, destDir, ""); err == nil {
+	if _, err := Stage(context.Background(), m, destDir, nil); err == nil {
 		t.Fatal("expect sha256 mismatch error")
 	}
 	// 失败时不得留下半成品
@@ -90,7 +90,7 @@ func TestStage_LocalPath_MissingChecksum(t *testing.T) {
 	m, src := localPathManifest(t, content)
 	os.Remove(src + ".sha256")
 	destDir := t.TempDir()
-	if _, err := Stage(context.Background(), m, destDir, ""); err == nil {
+	if _, err := Stage(context.Background(), m, destDir, nil); err == nil {
 		t.Fatal("expect error when checksum file missing (强制校验)")
 	}
 }
@@ -113,7 +113,7 @@ func TestStage_InsufficientDiskSpace(t *testing.T) {
 	availableBytes = func(path string) (int64, error) { return 10, nil } // 仅 10 字节可用
 	defer func() { availableBytes = orig }()
 
-	_, err := Stage(context.Background(), m, destDir, "")
+	_, err := Stage(context.Background(), m, destDir, nil)
 	if err == nil {
 		t.Fatal("expected insufficient disk space error")
 	}
@@ -153,7 +153,7 @@ func TestEnsureDiskSpaceFor_InsufficientReportsShortfall(t *testing.T) {
 	availableBytes = func(path string) (int64, error) { return 5, nil }
 	defer func() { availableBytes = orig }()
 
-	checked, err := EnsureDiskSpaceFor(context.Background(), m, t.TempDir(), "")
+	checked, err := EnsureDiskSpaceFor(context.Background(), m, t.TempDir(), nil)
 	if !checked || err == nil {
 		t.Fatal("expected checked=true with insufficient-space error")
 	}
@@ -172,7 +172,7 @@ func TestEnsureDiskSpaceFor_NonexistentDestUsesExistingAncestor(t *testing.T) {
 	availableBytes = func(path string) (int64, error) { probed = path; return 1 << 30, nil }
 	defer func() { availableBytes = orig }()
 
-	checked, err := EnsureDiskSpaceFor(context.Background(), m, destDir, "")
+	checked, err := EnsureDiskSpaceFor(context.Background(), m, destDir, nil)
 	if err != nil || !checked {
 		t.Fatalf("expected pass, got checked=%v err=%v", checked, err)
 	}
@@ -188,7 +188,7 @@ func TestEnsureDiskSpaceFor_UnknownSizeNotChecked(t *testing.T) {
 	releaseBaseURL = "http://127.0.0.1:1" // 立即拒绝
 	defer func() { releaseBaseURL = origBase }()
 
-	checked, err := EnsureDiskSpaceFor(context.Background(), m, t.TempDir(), "")
+	checked, err := EnsureDiskSpaceFor(context.Background(), m, t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("unknown size must not error: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestStage_CleansOrphanTempFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := Stage(context.Background(), m, destDir, ""); err != nil {
+	if _, err := Stage(context.Background(), m, destDir, nil); err != nil {
 		t.Fatalf("stage: %v", err)
 	}
 	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
@@ -266,7 +266,7 @@ func TestStage_CiReleaseSuccess(t *testing.T) {
 	defer func() { releaseBaseURL = origBase }()
 
 	destDir := t.TempDir()
-	if _, err := Stage(context.Background(), ciReleaseManifest(), destDir, ""); err != nil {
+	if _, err := Stage(context.Background(), ciReleaseManifest(), destDir, nil); err != nil {
 		t.Fatalf("stage ci_release: %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(destDir, "svc-a"))
@@ -288,7 +288,7 @@ func TestStage_CiReleaseTruncatedDownload(t *testing.T) {
 	defer func() { releaseBaseURL = origBase }()
 
 	destDir := t.TempDir()
-	_, err := Stage(context.Background(), ciReleaseManifest(), destDir, "")
+	_, err := Stage(context.Background(), ciReleaseManifest(), destDir, nil)
 	if err == nil {
 		t.Fatal("expected sha256 mismatch for truncated download")
 	}

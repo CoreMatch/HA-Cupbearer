@@ -1,8 +1,9 @@
 // Package artifact 负责按 Manifest 解析产物来源、下载/复制并校验 sha256，
-// 幂等地把产物落到版本目录。来源两种：
+// 幂等地把产物落到版本目录。来源三种：
 //   - ci_release：CI 构建后发布的 Release 资产（资产命名硬约定：
 //     <项目名>-linux-amd64 与 <项目名>-linux-amd64.sha256 双资产）；
-//   - local_path：本机/挂载路径上的产物文件（校验和文件为同名 + .sha256）。
+//   - local_path：本机/挂载路径上的产物文件（校验和文件为同名 + .sha256）；
+//   - grail：Grail 产物分发上游（签名清单 + 规范 URL 取件，见 grail.go）。
 //
 // 健壮性约定（失败必须说清楚，不静默降级）：
 //   - 落盘前做磁盘空间预检：能确定产物大小时，可用空间不足直接拒绝并给出差额；
@@ -17,6 +18,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	"HA-Services-Deployer/internal/config"
 	"HA-Services-Deployer/internal/manifest"
 )
 
@@ -49,13 +52,13 @@ var availableBytes = func(path string) (int64, error) {
 // Stage 把项目产物落到 destDir/<binary_name>。
 // 幂等：目标已存在且 sha256 与期望一致时直接跳过。
 // 落盘前做磁盘空间预检；产物经临时文件 + sha256 校验后原子改名。
-func Stage(ctx context.Context, m *manifest.Manifest, destDir string, githubToken string) (string, error) {
+func Stage(ctx context.Context, m *manifest.Manifest, destDir string, creds *config.Credentials) (string, error) {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return "", err
 	}
 	dest := filepath.Join(destDir, m.Baremetal.Install.BinaryName)
 
-	expectSHA, source, err := resolveChecksum(ctx, m, githubToken)
+	expectSHA, source, fetchURL, err := resolveChecksum(ctx, m, creds)
 	if err != nil {
 		return "", err
 	}
@@ -65,7 +68,7 @@ func Stage(ctx context.Context, m *manifest.Manifest, destDir string, githubToke
 	}
 
 	// 磁盘空间预检：能确定产物大小时，不足则明确拒绝并给出差额。
-	size, known, err := artifactSize(ctx, m, githubToken)
+	size, known, err := artifactSize(ctx, m, creds)
 	if err != nil {
 		return "", err
 	}
@@ -89,8 +92,9 @@ func Stage(ctx context.Context, m *manifest.Manifest, destDir string, githubToke
 	case "local_path":
 		err = copyLocal(m.ResolveLocalPath(), tmp)
 	case "ci_release":
-		url := releaseAssetURL(m, m.EffectiveAsset())
-		err = downloadStream(ctx, url, githubToken, tmp)
+		err = downloadStream(ctx, fetchURL, githubTokenOf(creds), tmp)
+	case "grail":
+		err = downloadStream(ctx, fetchURL, grailReadTokenOf(creds), tmp)
 	default:
 		err = fmt.Errorf("unsupported artifact source %q", m.Baremetal.Artifact.Source)
 	}
@@ -167,8 +171,8 @@ func VerifyLocalArtifact(m *manifest.Manifest) error {
 // 返回值 checked 表示空间是否实际得到校验——产物大小未知（如 ci_release
 // 的 HEAD 读不到 Content-Length）时为 false，调用方应报警告而非阻断
 // （落盘安全性仍由临时文件 + sha256 保证）。
-func EnsureDiskSpaceFor(ctx context.Context, m *manifest.Manifest, destDir string, githubToken string) (checked bool, err error) {
-	size, known, err := artifactSize(ctx, m, githubToken)
+func EnsureDiskSpaceFor(ctx context.Context, m *manifest.Manifest, destDir string, creds *config.Credentials) (checked bool, err error) {
+	size, known, err := artifactSize(ctx, m, creds)
 	if err != nil {
 		return false, err
 	}
@@ -206,8 +210,9 @@ func ensureDiskSpace(dir string, required int64) error {
 
 // artifactSize 返回产物大小（字节）及是否已知。
 // local_path 直接 stat 源文件；ci_release 通过 HEAD 读取 Content-Length，
-// 读不到时视为未知（下载仍以临时文件 + 校验保证安全，不会写坏目标）。
-func artifactSize(ctx context.Context, m *manifest.Manifest, githubToken string) (int64, bool, error) {
+// 读不到时视为未知（下载仍以临时文件 + 校验保证安全，不会写坏目标）；
+// grail 的大小来自签名清单声明（解析即验签，见 grail.go）。
+func artifactSize(ctx context.Context, m *manifest.Manifest, creds *config.Credentials) (int64, bool, error) {
 	switch m.Baremetal.Artifact.Source {
 	case "local_path":
 		info, err := os.Stat(m.ResolveLocalPath())
@@ -217,14 +222,37 @@ func artifactSize(ctx context.Context, m *manifest.Manifest, githubToken string)
 		return info.Size(), true, nil
 	case "ci_release":
 		url := releaseAssetURL(m, m.EffectiveAsset())
-		size, ok, err := headContentLength(ctx, url, githubToken)
+		size, ok, err := headContentLength(ctx, url, githubTokenOf(creds))
 		if err != nil || !ok {
 			return 0, false, nil // 大小未知：不阻断，落盘安全性由临时文件+校验保证
 		}
 		return size, true, nil
+	case "grail":
+		art, err := resolveGrailArtifact(ctx, m, creds)
+		if err != nil {
+			return 0, false, err
+		}
+		if art.size <= 0 {
+			return 0, false, nil
+		}
+		return art.size, true, nil
 	default:
 		return 0, false, fmt.Errorf("unsupported artifact source %q", m.Baremetal.Artifact.Source)
 	}
+}
+
+func githubTokenOf(creds *config.Credentials) string {
+	if creds == nil {
+		return ""
+	}
+	return creds.GithubToken
+}
+
+func grailReadTokenOf(creds *config.Credentials) string {
+	if creds == nil {
+		return ""
+	}
+	return creds.GrailReadToken
 }
 
 func headContentLength(ctx context.Context, url, token string) (int64, bool, error) {
@@ -266,24 +294,36 @@ func cleanOrphanTempFiles(dir string) {
 	}
 }
 
-func resolveChecksum(ctx context.Context, m *manifest.Manifest, githubToken string) (sha string, source string, err error) {
+// resolveChecksum 解析产物的期望校验和，并顺带给出取件地址：
+// 返回值 fetchURL 对 ci_release 是资产下载地址，对 grail 是规范取件
+// URL（已完成端到端验签），对 local_path 为空。
+func resolveChecksum(ctx context.Context, m *manifest.Manifest, creds *config.Credentials) (sha string, source string, fetchURL string, err error) {
 	switch m.Baremetal.Artifact.Source {
 	case "local_path":
 		sumPath := m.ResolveLocalPath() + ".sha256"
 		data, err := os.ReadFile(sumPath)
 		if err != nil {
-			return "", sumPath, fmt.Errorf("read checksum file: %w", err)
+			return "", sumPath, "", fmt.Errorf("read checksum file: %w", err)
 		}
-		return parseChecksum(string(data)), sumPath, nil
+		return parseChecksum(string(data)), sumPath, "", nil
 	case "ci_release":
 		url := releaseAssetURL(m, m.EffectiveChecksumAsset())
-		body, err := fetchBytes(ctx, url, githubToken)
+		body, err := fetchBytes(ctx, url, githubTokenOf(creds))
 		if err != nil {
-			return "", url, err
+			return "", url, "", err
 		}
-		return parseChecksum(string(body)), url, nil
+		return parseChecksum(string(body)), url, releaseAssetURL(m, m.EffectiveAsset()), nil
+	case "grail":
+		art, err := resolveGrailArtifact(ctx, m, creds)
+		if err != nil {
+			return "", "grail", "", err
+		}
+		if art.graceNote != "" {
+			log.Printf("artifact: %s", art.graceNote)
+		}
+		return art.digestHex, art.fetchURL, art.fetchURL, nil
 	default:
-		return "", "", fmt.Errorf("unsupported artifact source %q", m.Baremetal.Artifact.Source)
+		return "", "", "", fmt.Errorf("unsupported artifact source %q", m.Baremetal.Artifact.Source)
 	}
 }
 

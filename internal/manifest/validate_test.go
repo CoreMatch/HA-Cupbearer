@@ -683,3 +683,84 @@ func TestValidateImageDigest(t *testing.T) {
 		t.Fatal("registry image without tag or digest must fail")
 	}
 }
+
+const grailManifestYAML = `
+manifest_version: 1
+project: svc-g
+display_name: Service G
+group: core
+service_version: "0.6"
+facts:
+  ports:
+    - { name: http, port: 2790, exposure: public }
+  health:
+    http: { port_name: http, path: /health, expect_status: 200, timeout_seconds: 3, interval_seconds: 1, retries: 5 }
+  migration: { mode: none }
+baremetal:
+  process:
+    manager: tinyvisor
+    tinyvisor: { restart_policy: unless-stopped, auto_start: true }
+  install: { root: /opt/svc-g, layout: releases, binary_name: svc-g, keep_releases: 3 }
+  artifact:
+    source: grail
+    grail:
+      base_url: %s
+      project: %s
+      channel: %s
+`
+
+func validateGrailManifest(t *testing.T, baseURL, project, channel string) *Report {
+	t.Helper()
+	dir := t.TempDir()
+	writeManifest(t, dir, "svc-g", fmt.Sprintf(grailManifestYAML, baseURL, project, channel))
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	if len(errs) != 0 {
+		t.Fatalf("load errors: %v", errs)
+	}
+	return ValidateAggregate(manifests, errs)
+}
+
+func TestValidateGrailSource_Valid(t *testing.T) {
+	rep := validateGrailManifest(t, "https://grail.example.internal", "svc-g", "release")
+	if !rep.OK() {
+		t.Fatalf("expected valid grail source, got: %v", rep.Errors)
+	}
+}
+
+func TestValidateGrailSource_Defaults(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, "svc-g", fmt.Sprintf(grailManifestYAML, "https://grail.example.internal", "svc-g", "release"))
+	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	if len(errs) != 0 {
+		t.Fatalf("load errors: %v", errs)
+	}
+	m := manifests[0]
+	if got := m.EffectiveGrailVersion(); got != "latest" {
+		t.Errorf("EffectiveGrailVersion default = %q, want latest", got)
+	}
+	if got := m.EffectiveGrailPlatform(); got != "linux-amd64" {
+		t.Errorf("EffectiveGrailPlatform default = %q, want linux-amd64", got)
+	}
+}
+
+func TestValidateGrailSource_Rejections(t *testing.T) {
+	cases := []struct {
+		name    string
+		baseURL string
+		project string
+		channel string
+	}{
+		{"missing base_url", "", "svc-g", "release"},
+		{"non-http base_url", "ftp://x", "svc-g", "release"},
+		{"bad project", "https://grail.example.internal", "Svc_G", "release"},
+		{"bad channel", "https://grail.example.internal", "svc-g", "nightly"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rep := validateGrailManifest(t, tc.baseURL, tc.project, tc.channel)
+			if rep.OK() {
+				t.Fatalf("case %q must be rejected", tc.name)
+			}
+		})
+	}
+}

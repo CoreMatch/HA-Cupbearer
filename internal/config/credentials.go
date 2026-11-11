@@ -16,6 +16,13 @@ type Credentials struct {
 	TinyvisorAPIKey string `json:"tinyvisor_api_key"`
 	DeployToken     string `json:"deploy_token"`
 	GithubToken     string `json:"github_token"`
+	// GrailRootPublicKey 是验证 Grail 签名的信任锚（根公钥，base64）。
+	// 带外分发、本地钉住；绝不进 Manifest（公钥不是机密，但信任锚必须
+	// 与其他凭据同渠道管理，避免清单成为攻击面）。
+	GrailRootPublicKey string `json:"grail_root_public_key,omitempty"`
+	// GrailReadToken 是读取 Grail 非公开渠道（ci/candidate，或非公开
+	// 节点的 release）的读凭据；公开节点的 release 可留空匿名读。
+	GrailReadToken string `json:"grail_read_token,omitempty"`
 	// SmokeSecrets 存放部署后冒烟验证引用的密钥值：
 	// Manifest 的 facts.smoke 以 ${secret:<name>} 引用这里的键，
 	// 密钥本身只存在于凭据文件，绝不进 Manifest。

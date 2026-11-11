@@ -30,20 +30,20 @@ const SchemaVersion = 1
 
 // Manifest 是一个项目的完整部署声明。
 type Manifest struct {
-	ManifestVersion int       `yaml:"manifest_version" json:"manifest_version"`
-	Kind            string    `yaml:"kind" json:"kind"` // service | external | plugin
-	Project         string    `yaml:"project" json:"project"`
-	DisplayName     string    `yaml:"display_name" json:"display_name"`
-	Group           string    `yaml:"group" json:"group"`
-	ServiceVersion  string    `yaml:"service_version" json:"service_version"`
+	ManifestVersion int    `yaml:"manifest_version" json:"manifest_version"`
+	Kind            string `yaml:"kind" json:"kind"` // service | external | plugin
+	Project         string `yaml:"project" json:"project"`
+	DisplayName     string `yaml:"display_name" json:"display_name"`
+	Group           string `yaml:"group" json:"group"`
+	ServiceVersion  string `yaml:"service_version" json:"service_version"`
 	// Runtime 选择本项目生效的执行形态：baremetal（默认）| container。
 	// baremetal 与 container 两段在清单里共存（各自声明该形态怎么跑），
 	// 执行时按本选择器互斥取一；部署上下文可用 overrides.<p>.runtime 覆盖
 	// （如生产裸金属、隔离环境容器）。
-	Runtime    string    `yaml:"runtime" json:"runtime"`
-	Facts      Facts     `yaml:"facts" json:"facts"`
-	Baremetal  Baremetal `yaml:"baremetal" json:"baremetal"`
-	Container  Container `yaml:"container" json:"container"`
+	Runtime   string    `yaml:"runtime" json:"runtime"`
+	Facts     Facts     `yaml:"facts" json:"facts"`
+	Baremetal Baremetal `yaml:"baremetal" json:"baremetal"`
+	Container Container `yaml:"container" json:"container"`
 	// Plugin 仅 kind=plugin 清单使用：插件型产物（装进别人进程的 jar 一类）
 	// 与它的安装目标。编排器当前只登记与校验这类条目，不执行安装。
 	Plugin *PluginSpec `yaml:"plugin,omitempty" json:"plugin,omitempty"`
@@ -87,8 +87,8 @@ type SmokeCheck struct {
 	// ExpectStatus 为期望状态码，默认 200（允许 404 等确定性负结果）。
 	ExpectStatus int `yaml:"expect_status" json:"expect_status"`
 	// Assert 为可选响应体断言。
-	Assert     SmokeAssert `yaml:"assert,omitempty" json:"assert,omitempty"`
-	TimeoutSeconds int   `yaml:"timeout_seconds,omitempty" json:"timeout_seconds,omitempty"` // 默认 5
+	Assert         SmokeAssert `yaml:"assert,omitempty" json:"assert,omitempty"`
+	TimeoutSeconds int         `yaml:"timeout_seconds,omitempty" json:"timeout_seconds,omitempty"` // 默认 5
 }
 
 // SmokeAssert 是响应体断言（三个开关可组合）。
@@ -188,15 +188,30 @@ type InstallSpec struct {
 type ArtifactSpec struct {
 	// Source 为产物来源：
 	//   ci_release  — CI 构建后发布的 Release 资产（生产正路）；
-	//   local_path  — 本机/挂载路径上的产物文件（隔离环境与本地验证）。
-	Source    string      `yaml:"source" json:"source"`
-	Release   ReleaseSpec `yaml:"release" json:"release"`
+	//   local_path  — 本机/挂载路径上的产物文件（隔离环境与本地验证）；
+	//   grail       — Grail 产物分发上游（契约 1.4.0 引入）：签名清单 +
+	//     规范 URL 取件，信任锚（根公钥）在凭据文件，绝不进清单。
+	Source  string      `yaml:"source" json:"source"`
+	Release ReleaseSpec `yaml:"release" json:"release"`
 	// LocalPath 是 local_path 来源的产物文件位置。绝对路径按原样使用；
 	// 相对路径相对**清单文件所在目录**（即该仓库的根目录）解析——例如
 	// `build/avalon` 指 <仓库根>/build/avalon。这是单机编排约定：同机
 	// 部署下相对路径足够，且不再把具体机器的绝对布局钉进清单。解析见
 	// (*Manifest).ResolveLocalPath；校验和文件恒为同目录同名 + .sha256。
 	LocalPath string `yaml:"local_path" json:"local_path"`
+	// Grail 是 grail 来源的上游声明（HA-Contract grail.yaml）。
+	Grail GrailSpec `yaml:"grail" json:"grail"`
+}
+
+// GrailSpec 声明 Grail 上游：base_url + project + channel (+version/platform)。
+// 版本号是不透明标识符：Deployer 只取 latest（由 Grail 解析）或显式钉住，
+// 绝不解析或比较版本号数字（成熟度只看渠道）。
+type GrailSpec struct {
+	BaseURL  string `yaml:"base_url" json:"base_url"`
+	Project  string `yaml:"project" json:"project"`
+	Channel  string `yaml:"channel" json:"channel"`   // release | candidate | ci
+	Version  string `yaml:"version" json:"version"`   // 空 = latest；否则显式钉住
+	Platform string `yaml:"platform" json:"platform"` // 空 = linux-amd64
 }
 
 // ResolveLocalPath 返回 local_path 来源产物的可用路径：绝对路径原样
@@ -229,7 +244,7 @@ type ReleaseSpec struct {
 type Container struct {
 	// Enabled 已退役：冻结期的历史字段，现存清单均为 false。新清单用
 	// 顶层 runtime 选择器；设为 true 会被校验拒绝并指向新写法。
-	Enabled bool `yaml:"enabled" json:"enabled"`
+	Enabled bool         `yaml:"enabled" json:"enabled"`
 	Image   ImageSpec    `yaml:"image" json:"image"`
 	Volumes []VolumeSpec `yaml:"volumes,omitempty" json:"volumes,omitempty"`
 	// ContainerPorts 可选：容器内监听口与 facts.ports 不一致时按端口名
@@ -326,11 +341,11 @@ var (
 	// credentialValueRes 是常见凭据形态的值特征（与键名无关，全文扫描）。
 	credentialValueRes = []*regexp.Regexp{
 		regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),
-		regexp.MustCompile(`\b(ghp|gho|ghs|ghu|github_pat)_[A-Za-z0-9]{16,}\b`), // GitHub 令牌族
-		regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),                               // AWS access key
+		regexp.MustCompile(`\b(ghp|gho|ghs|ghu|github_pat)_[A-Za-z0-9]{16,}\b`),            // GitHub 令牌族
+		regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),                                         // AWS access key
 		regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`), // JWT
-		regexp.MustCompile(`^[0-9a-fA-F]{48,}$`),        // 长十六进制串
-		regexp.MustCompile(`^[A-Za-z0-9+]{48,}={0,2}$`), // 长 base64 串
+		regexp.MustCompile(`^[0-9a-fA-F]{48,}$`),                                           // 长十六进制串
+		regexp.MustCompile(`^[A-Za-z0-9+]{48,}={0,2}$`),                                    // 长 base64 串
 	}
 	credentialSecretRefRe = regexp.MustCompile(`^\$\{secret:[A-Za-z0-9_-]+\}$`)
 	credentialBraceRe     = regexp.MustCompile(`\$\{[^}]*\}`)
