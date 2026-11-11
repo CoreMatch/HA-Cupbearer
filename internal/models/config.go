@@ -107,7 +107,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Version: "1",
 		Server: ServerConfig{
-			Listen: ":2770",
+			Listen: ":18080",
 		},
 		Storage: StorageConfig{
 			ArtifactsRoot: "./data/artifacts",
