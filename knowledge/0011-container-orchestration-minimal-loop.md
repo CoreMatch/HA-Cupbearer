@@ -99,7 +99,7 @@ itself running entirely as uid 1000.
 Service: **ha-cupbearer itself** (repo exclusively owned; manifest
 facts pre-existing; `FROM scratch` + static binary, zero registry pulls).
 Form: `runtime: container` via override, port 18080→18096 remap, volume
-`/tmp/ha-e2e/hasdc/data → /data` seeded with config + manifest.json.
+`/tmp/ha-e2e/hacbc/data → /data` seeded with config + manifest.json.
 
 1. **Deploy v1.0.0** (run `20261108-101730`): image build → volume dir →
    create `740a3b6e8535` → start → health `/healthz` 200 → smoke

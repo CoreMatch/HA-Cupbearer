@@ -97,7 +97,7 @@ func EnvForContainer(in *Inputs, secrets map[string]string, facts *InfraFacts) m
 		"MCA_JOIN_TARGET_PORT":    "0",
 
 		"SDKHANDLER_BIND":             "127.0.0.1",
-		"DEPLOYER_BIND":               "127.0.0.1",
+		"CUPBEARER_BIND":               "127.0.0.1",
 		"MAINTENANCEVIEW_BIND":        "127.0.0.1",
 		"HRPAUTH_PORT":                "2778",
 		"YGG_PORT":                    "2770",
@@ -107,7 +107,7 @@ func EnvForContainer(in *Inputs, secrets map[string]string, facts *InfraFacts) m
 		"MCA_SERVER_PORT":             "9178",
 		"SDKHANDLER_PORT":             "2704",
 		"SDKHANDLER_MAINTENANCE_PORT": "2705",
-		"DEPLOYER_PORT":               "18080",
+		"CUPBEARER_PORT":               "18080",
 		"MAINTENANCEVIEW_PORT":        "18081",
 		"WEBUI_PORT":                  "8080",
 		"WEBUI_BIND":                  "0.0.0.0",
@@ -138,9 +138,9 @@ func EnvForBaremetal(in *Inputs, secrets map[string]string, service, secretsDirA
 	if internalYGG == "" {
 		internalYGG = "http://127.0.0.1:2770"
 	}
-	internalDeployer := in.InternalURLs.Cupbearer
-	if internalDeployer == "" {
-		internalDeployer = "http://127.0.0.1:18080"
+	internalCupbearer := in.InternalURLs.Cupbearer
+	if internalCupbearer == "" {
+		internalCupbearer = "http://127.0.0.1:18080"
 	}
 
 	dbName := in.Database.Names.HRPAuth
@@ -164,7 +164,7 @@ func EnvForBaremetal(in *Inputs, secrets map[string]string, service, secretsDirA
 	env["HRPAUTH_URL"] = internalHRPAuth
 	env["HRPAUTH_YGG_URL"] = internalYGG
 	env["YGG_INTERNAL_URL"] = internalYGG
-	env["DEPLOYER_URL"] = internalDeployer
+	env["CUPBEARER_URL"] = internalCupbearer
 	env["SIGNATURE_KEY_DIR"] = secretsDirAbs
 	// 裸金属没有 compose 网络名；其余变量（机密/公开 URL/库名）同源同值。
 	return env

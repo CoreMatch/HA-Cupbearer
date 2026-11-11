@@ -14,7 +14,7 @@ runtime: baremetal
 facts:
   ports:
     # deploy/config/ha-cupbearer.yaml.tmpl: server.listen ":18080"。
-    # compose 宿主侧默认 127.0.0.1 绑定（DEPLOYER_BIND，注释：内部下发服务，
+    # compose 宿主侧默认 127.0.0.1 绑定（CUPBEARER_BIND，注释：内部下发服务，
     # 仅回环；MaintenanceView 经网络访问）。
     - name: http
       port: 18080
