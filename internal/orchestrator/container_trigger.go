@@ -84,18 +84,43 @@ func (o *Orchestrator) composeTemplateServices(ctx context.Context, path string)
 // 的 image 钉到清单声明的已发布引用（digest 优先）。只覆盖 image，
 // 其余接线（env/配置模板/端口/依赖）沿用模板——模板是整套容器形态的
 // 事实来源，清单只贡献镜像引用。
-func renderComposeOverride(runID string, pinned map[string]string) string {
+//
+// attachInfra=true 时（共享基础设施网络 ha-infra 存在）：把主栈全部服务
+// 挂入该网络，容器链路即可按服务名解析共用的 mysql/redis（同一份基础
+// 设施的两种地址形态之一，见 knowledge/0015）；网络不存在则零变化。
+func renderComposeOverride(runID string, pinned map[string]string, attachInfra bool, allServices []string) string {
 	var b strings.Builder
 	b.WriteString("# 由 HA-Services-Deployer 一键触发自动生成（run " + runID + "）——勿手工编辑。\n")
 	b.WriteString("# 镜像引用来自各项目 deploy-manifest.yaml 的已发布引用（digest 优先）。\n")
-	b.WriteString("services:\n")
-	names := make([]string, 0, len(pinned))
+	if attachInfra {
+		b.WriteString("# 共享基础设施网络 ha-infra 已在：主栈挂入后按服务名解析 mysql/redis。\n")
+		b.WriteString("networks:\n  ha-infra:\n    external: true\n")
+	}
+
+	serviceSet := make(map[string]bool, len(pinned)+len(allServices))
 	for n := range pinned {
+		serviceSet[n] = true
+	}
+	if attachInfra {
+		for _, s := range allServices {
+			serviceSet[s] = true
+		}
+	}
+	names := make([]string, 0, len(serviceSet))
+	for n := range serviceSet {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+
+	b.WriteString("services:\n")
 	for _, n := range names {
-		b.WriteString(fmt.Sprintf("  %s:\n    image: %s\n", n, pinned[n]))
+		b.WriteString("  " + n + ":\n")
+		if img, ok := pinned[n]; ok {
+			b.WriteString("    image: " + img + "\n")
+		}
+		if attachInfra {
+			b.WriteString("    networks:\n      - default\n      - ha-infra\n")
+		}
 	}
 	return b.String()
 }
@@ -196,13 +221,13 @@ func (o *Orchestrator) TriggerContainerStack() (*Run, error) {
 	_ = o.store.SaveRun(run)
 
 	snap := snapshotRun(run)
-	go o.executeContainerTrigger(run, composeFile, pinned, versions)
+	go o.executeContainerTrigger(run, composeFile, pinned, versions, services)
 	return snap, nil
 }
 
 // executeContainerTrigger 执行触发：写 override → compose up → ps 快照。
 // 每一步如实记录；compose 失败即运行失败，不做任何静默降级。
-func (o *Orchestrator) executeContainerTrigger(run *Run, composeFile string, pinned map[string]string, versions map[string]string) {
+func (o *Orchestrator) executeContainerTrigger(run *Run, composeFile string, pinned map[string]string, versions map[string]string, services map[string]bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), triggerTimeout)
 	defer cancel()
 
@@ -229,6 +254,21 @@ func (o *Orchestrator) executeContainerTrigger(run *Run, composeFile string, pin
 	}
 
 	// 1. override 落盘（状态目录下的 container-trigger/，可回溯）。
+	// 共享基础设施网络存在时把主栈挂入（容器链路按服务名解析 mysql/redis）。
+	attachInfra, nerr := o.docker.NetworkExists(ctx, "ha-infra")
+	if nerr != nil {
+		addStep("write-override", nerr, "probe ha-infra network")
+		o.finishTriggerRun(run)
+		return
+	}
+	if attachInfra {
+		run.Notes = append(run.Notes, "共享基础设施网络 ha-infra 存在：主栈已挂入（容器链路按服务名解析 mysql/redis）")
+	}
+	allServices := make([]string, 0, len(services))
+	for s := range services {
+		allServices = append(allServices, s)
+	}
+	sort.Strings(allServices)
 	overrideDir := filepath.Join(o.store.Dir(), "container-trigger")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		addStep("write-override", err, overrideDir)
@@ -236,7 +276,7 @@ func (o *Orchestrator) executeContainerTrigger(run *Run, composeFile string, pin
 		return
 	}
 	overridePath := filepath.Join(overrideDir, "override-"+run.ID+".yml")
-	if err := os.WriteFile(overridePath, []byte(renderComposeOverride(run.ID, pinned)), 0o644); !addStep("write-override", err, overridePath) {
+	if err := os.WriteFile(overridePath, []byte(renderComposeOverride(run.ID, pinned, attachInfra, allServices)), 0o644); !addStep("write-override", err, overridePath) {
 		o.finishTriggerRun(run)
 		return
 	}

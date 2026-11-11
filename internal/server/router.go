@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 
+	"HA-Services-Deployer/internal/bootstrap"
 	"HA-Services-Deployer/internal/models"
 	"HA-Services-Deployer/internal/orchestrator"
 
@@ -14,15 +15,17 @@ type Handler struct {
 	cfg         *models.Config
 	orch        *orchestrator.Orchestrator // nil = 编排关闭（零回归）
 	deployToken string
+	boot        *bootstrap.Engine  // nil = 初始化层未装配
+	mv          MVStatusSource     // nil = MV 监督未装配
 }
 
-func NewHandler(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken string) *Handler {
-	return &Handler{cfg: cfg, orch: orch, deployToken: deployToken}
+func NewHandler(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken string, boot *bootstrap.Engine, mv MVStatusSource) *Handler {
+	return &Handler{cfg: cfg, orch: orch, deployToken: deployToken, boot: boot, mv: mv}
 }
 
-func NewRouter(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken string) *gin.Engine {
+func NewRouter(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken string, boot *bootstrap.Engine, mv MVStatusSource) *gin.Engine {
 	router := gin.Default()
-	handler := NewHandler(cfg, orch, deployToken)
+	handler := NewHandler(cfg, orch, deployToken, boot, mv)
 
 	router.GET("/healthz", handler.Healthz)
 
@@ -51,6 +54,22 @@ func NewRouter(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken 
 			deploy.POST("/rollback", handler.deployAuth, handler.PostDeployRollback)
 			deploy.POST("/container/trigger", handler.deployAuth, handler.PostDeployContainerTrigger)
 		}
+
+		// 首次运行初始化面（独立于 orchestration.enabled；变更面经
+		// bootstrapAuth 强制 X-Deploy-Token，fail-closed）。组前缀写全路径，
+		// 与 HA-Contract 的路由级 drift 提取（单层 Group 前缀解析）保持可校验。
+		bootstrapGroup := router.Group("/api/v1/deploy/bootstrap")
+		{
+			bootstrapGroup.GET("/status", handler.GetBootstrapStatus)
+			bootstrapGroup.GET("/infra", handler.GetBootstrapInfra)
+			bootstrapGroup.POST("/infra/mysql", handler.bootstrapAuth, handler.PostBootstrapInfraMySQL)
+			bootstrapGroup.POST("/infra/redis", handler.bootstrapAuth, handler.PostBootstrapInfraRedis)
+			bootstrapGroup.POST("/plan", handler.bootstrapAuth, handler.PostBootstrapPlan)
+			bootstrapGroup.POST("/run", handler.bootstrapAuth, handler.PostBootstrapRun)
+			bootstrapGroup.GET("/runs", handler.GetBootstrapRuns)
+			bootstrapGroup.GET("/runs/:id", handler.GetBootstrapRun)
+		}
+		api.GET("/deploy/maintenance-view", handler.GetMaintenanceView)
 	}
 
 	router.NoRoute(func(c *gin.Context) {

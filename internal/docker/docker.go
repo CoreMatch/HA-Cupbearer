@@ -98,6 +98,9 @@ type Driver interface {
 	//（`docker compose config --services`）。服务发现以 compose 自身为
 	// 权威，不在编排器侧重新解析 compose YAML（锚点/别名/插值等边界）。
 	ComposeServices(ctx context.Context, files []string) ([]string, error)
+	// NetworkExists 判定具名网络是否存在（一键触发按存在性决定是否把
+	// 主栈挂入共享基础设施网络 ha-infra）。
+	NetworkExists(ctx context.Context, name string) (bool, error)
 }
 
 // CLI 经 docker 命令行实现的 Driver。
@@ -151,7 +154,8 @@ func (c *CLI) runEnv(ctx context.Context, extraEnv []string, args ...string) (st
 	if err != nil {
 		msg := strings.TrimSpace(stderr.String())
 		if strings.Contains(msg, "No such object") || strings.Contains(msg, "No such image") ||
-			strings.Contains(msg, "No such container") || strings.Contains(msg, "could not be found") {
+			strings.Contains(msg, "No such container") || strings.Contains(msg, "No such network") ||
+			strings.Contains(msg, "could not be found") {
 			return "", ErrNotFound
 		}
 		return "", fmt.Errorf("docker %s: %v: %s", strings.Join(args, " "), err, msg)
@@ -410,8 +414,15 @@ func (c *CLI) composeArgs(files []string, sub ...string) []string {
 // ComposeUp 执行 `docker compose -f ... up -d` 并返回合并输出
 //（stderr 常含进度信息，出错时一并给出以便如实回报）。
 func (c *CLI) ComposeUp(ctx context.Context, files []string) (string, error) {
+	return c.ComposeUpEnv(ctx, files, nil)
+}
+
+// ComposeUpEnv 同 ComposeUp，另附加环境变量（compose 插值可见，
+// 用于注入不入库的凭据，如基础设施容器的 root 口令）。
+func (c *CLI) ComposeUpEnv(ctx context.Context, files []string, extraEnv []string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := c.cmd(ctx, c.composeArgs(files, "up", "-d")...)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
@@ -426,6 +437,18 @@ func (c *CLI) ComposeUp(ctx context.Context, files []string) (string, error) {
 		return out, fmt.Errorf("docker compose up: %v", err)
 	}
 	return out, nil
+}
+
+// NetworkExists 判定具名网络是否存在（触发器按存在性决定是否挂网）。
+func (c *CLI) NetworkExists(ctx context.Context, name string) (bool, error) {
+	_, err := c.run(ctx, "network", "inspect", name)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ComposePs 返回 `docker compose -f ... ps` 的状态快照文本。

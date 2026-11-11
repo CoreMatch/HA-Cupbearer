@@ -3,8 +3,10 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 )
 
 // Credentials 是编排链路的本地凭据（tinyvisor apiKey、部署端点令牌、
@@ -40,4 +42,24 @@ func LoadCredentials(path string) (*Credentials, error) {
 		return nil, err
 	}
 	return creds, nil
+}
+
+// SaveCredentials 原子写入凭据文件（0600，目录 0700）。
+// 用于首跑时把自动生成的 deploy_token 落盘（只记指纹到日志，不写明文）。
+func SaveCredentials(path string, creds *Credentials) error {
+	if path == "" {
+		return fmt.Errorf("credentials path is empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(creds, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

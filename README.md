@@ -15,8 +15,37 @@
 
 Manifest v1 is organized by service release. It is used for release display,
 version comparison, and artifact download selection. First-deployment
-configuration initialization is intentionally out of scope for this schema
-revision.
+configuration initialization is **no longer out of scope**: it is provided by
+the bootstrap layer below (outside the version-manifest schema — manifests
+stay release-oriented). See `knowledge/0016-first-run-bootstrap-mv-autostart-shared-infra.md`.
+
+## First-run bootstrap (one-click initialization)
+
+Turns a fresh machine into a runnable platform without manual secret
+generation, database creation, or `.env` assembly. Independent of
+`orchestration.enabled`; the wizard UI lives in HA-Services-MaintenanceView,
+which the Deployer **auto-launches and supervises** (reuses an already-
+running instance, never starts a second).
+
+- `GET /api/v1/deploy/bootstrap/status` — current state + wizard metadata
+- `GET /api/v1/deploy/bootstrap/infra` — shared MySQL/Redis status (both
+  address forms: bare-metal `127.0.0.1:<port>`, compose `mysql:3306`)
+- `POST /api/v1/deploy/bootstrap/infra/mysql|redis` — one-click ensure
+  (detect → adopt existing → launch managed container, wait for real
+  readiness; **X-Deploy-Token**)
+- `POST /api/v1/deploy/bootstrap/plan` — dry-run preview (**X-Deploy-Token**)
+- `POST /api/v1/deploy/bootstrap/run` — one-click initialization
+  (**X-Deploy-Token**): infra → secrets → databases → signing keys →
+  `.env` merge → bare-metal config rendering
+- `GET /api/v1/deploy/bootstrap/runs[/:id]` — run records (resume basis)
+- `GET /api/v1/deploy/maintenance-view` — supervised MV status
+
+Guarantees: idempotent (existing values/files/databases preserved, drift
+warns, never overwrites); resumable (re-run continues from the breakpoint);
+no plaintext secrets in any response/log (fingerprints only); shared
+MySQL/Redis for both deployment paths (`deploy/infra.yml`; wipe procedure in
+its header comment). Deploy token is auto-generated into the credentials
+file on first start when absent.
 
 ## Quick start
 
@@ -49,6 +78,10 @@ When orchestration is enabled (see below), the following are added:
 - `GET /api/v1/deploy/runs`, `GET /api/v1/deploy/runs/:id` — run records
 - `POST /api/v1/deploy/run` — start a deploy run (**requires `X-Deploy-Token`**)
 - `POST /api/v1/deploy/rollback` — one-click rollback (**requires `X-Deploy-Token`**)
+- `POST /api/v1/deploy/container/trigger` — one-click container stack trigger
+  (**requires `X-Deploy-Token`**)
+- bootstrap + maintenance-view endpoints — see "First-run bootstrap" above
+  (always available, independent of orchestration)
 
 ## Bare-metal orchestration (opt-in)
 
