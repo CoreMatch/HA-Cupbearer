@@ -284,6 +284,66 @@ func TestValidateRejectsBadDBName(t *testing.T) {
 	}
 }
 
+// --- 数据库冲突：政策校验与动作决策 ---
+
+func TestValidateDatabasePolicy(t *testing.T) {
+	cases := []struct {
+		name      string
+		policy    string
+		existing  string
+		wantField string // 空 = 不应出现 policy/existing_password 字段错误
+	}{
+		{"空政策允许（冲突时才显式失败）", "", "", ""},
+		{"takeover", PolicyTakeover, "", ""},
+		{"reuse 带口令", PolicyReuse, "old-pass", ""},
+		{"skip", PolicySkip, "", ""},
+		{"非法政策", "wipe", "", "database.policy"},
+		{"reuse 缺口令", PolicyReuse, "", "database.existing_password"},
+		{"口令只配 reuse", PolicyTakeover, "old-pass", "database.existing_password"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := validInputs(t, t.TempDir())
+			in.Database.Policy = tc.policy
+			in.Database.ExistingPassword = tc.existing
+			in.fillDefaults()
+			got := ""
+			for _, e := range in.Validate() {
+				if e.Field == "database.policy" || e.Field == "database.existing_password" {
+					got = e.Field
+				}
+			}
+			if got != tc.wantField {
+				t.Fatalf("want field error %q, got %q", tc.wantField, got)
+			}
+		})
+	}
+}
+
+func TestDecideDBAction(t *testing.T) {
+	cases := []struct {
+		userExists, match bool
+		policy            string
+		want              DBAction
+	}{
+		{false, false, "", DBActionProceed},             // 账号不存在：照常创建
+		{false, false, PolicyTakeover, DBActionProceed}, // 无冲突时处置不生效
+		{true, true, "", DBActionProceed},               // 口令一致：幂等无操作
+		{true, true, PolicySkip, DBActionProceed},       // 无冲突时处置不生效
+		{true, false, "", DBActionConflict},             // 冲突无处置：显式失败（fail-closed）
+		{true, false, PolicyTakeover, DBActionTakeover},
+		{true, false, PolicyReuse, DBActionReuse},
+		{true, false, PolicySkip, DBActionSkip},
+		{true, false, "bogus", DBActionConflict}, // 未知政策按未选择处理，仍 fail-closed
+	}
+	for _, tc := range cases {
+		if got := decideDBAction(tc.userExists, tc.match, tc.policy); got != tc.want {
+			t.Errorf("decideDBAction(%v,%v,%q)=%q, want %q",
+				tc.userExists, tc.match, tc.policy, got, tc.want)
+		}
+	}
+}
+
 // --- dry-run 不落盘 ---
 
 func TestPlanWritesNothing(t *testing.T) {

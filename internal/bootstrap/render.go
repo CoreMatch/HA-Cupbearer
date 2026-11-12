@@ -97,7 +97,7 @@ func EnvForContainer(in *Inputs, secrets map[string]string, facts *InfraFacts) m
 		"MCA_JOIN_TARGET_PORT":    "0",
 
 		"SDKHANDLER_BIND":             "127.0.0.1",
-		"CUPBEARER_BIND":               "127.0.0.1",
+		"CUPBEARER_BIND":              "127.0.0.1",
 		"MAINTENANCEVIEW_BIND":        "127.0.0.1",
 		"HRPAUTH_PORT":                "2778",
 		"YGG_PORT":                    "2770",
@@ -107,7 +107,7 @@ func EnvForContainer(in *Inputs, secrets map[string]string, facts *InfraFacts) m
 		"MCA_SERVER_PORT":             "9178",
 		"SDKHANDLER_PORT":             "2704",
 		"SDKHANDLER_MAINTENANCE_PORT": "2705",
-		"CUPBEARER_PORT":               "18080",
+		"CUPBEARER_PORT":              "18080",
 		"MAINTENANCEVIEW_PORT":        "18081",
 		"WEBUI_PORT":                  "8080",
 		"WEBUI_BIND":                  "0.0.0.0",

@@ -60,15 +60,30 @@ type Targets struct {
 	Baremetal bool `json:"baremetal"`
 }
 
+// 数据库冲突的三种处置（见 Database.Policy）。
+const (
+	PolicyTakeover = "takeover" // 把既有账号口令改为本次凭据，继续
+	PolicyReuse    = "reuse"    // 不改口令，验证并沿用既有口令（收编进状态）
+	PolicySkip     = "skip"     // 保留现状：databases 步整体不动，只补其余步骤
+)
+
 // Database 描述 MySQL 管理口连接与库规划。
 type Database struct {
-	AdminHost     string  `json:"admin_host"`
-	AdminPort     int     `json:"admin_port"`
-	AdminUser     string  `json:"admin_user"`
-	AdminPassword string  `json:"admin_password"`
-	AppUser       string  `json:"app_user"`    // 默认 hrpa；口令由本层生成
-	ManageUser    *bool   `json:"manage_user"` // 默认 true：建账号并授权
-	Names         DBNames `json:"names"`
+	AdminHost     string `json:"admin_host"`
+	AdminPort     int    `json:"admin_port"`
+	AdminUser     string `json:"admin_user"`
+	AdminPassword string `json:"admin_password"`
+	AppUser       string `json:"app_user"`    // 默认 hrpa；口令由本层生成
+	ManageUser    *bool  `json:"manage_user"` // 默认 true：建账号并授权
+	// Policy 是"应用账号已存在且口令与本次凭据不一致"时的处置：
+	// takeover / reuse / skip。只在探测到该冲突时生效——无冲突（账号不存在
+	// 或口令本就一致）时一律忽略；探测到冲突而未给政策则显式失败（fail-closed，
+	// 绝不半途改一半）。
+	Policy string `json:"policy"`
+	// ExistingPassword 是既有账号的当前口令；policy=reuse 时必填，
+	// 先验证后收编进状态，任何响应中绝不回显。
+	ExistingPassword string  `json:"existing_password"`
+	Names            DBNames `json:"names"`
 }
 
 // DBNames 是四个独占库的库名（schema_migrations 簿记表结构互不兼容，
@@ -296,6 +311,17 @@ func (in *Inputs) Validate() []FieldError {
 	}
 	if in.Database.AppUser != "" && !validIdentifier(in.Database.AppUser) {
 		add("database.app_user", fmt.Sprintf("账号名 %q 非法：只允许字母/数字/下划线，且以字母开头", in.Database.AppUser))
+	}
+	switch in.Database.Policy {
+	case "", PolicyTakeover, PolicyReuse, PolicySkip:
+	default:
+		add("database.policy", fmt.Sprintf("处置 %q 非法：只允许 takeover（接管）/ reuse（沿用）/ skip（跳过）", in.Database.Policy))
+	}
+	if in.Database.Policy == PolicyReuse && strings.TrimSpace(in.Database.ExistingPassword) == "" {
+		add("database.existing_password", "policy=reuse 必须提供既有账号的当前口令（先验证、后收编进状态）")
+	}
+	if in.Database.Policy != PolicyReuse && strings.TrimSpace(in.Database.ExistingPassword) != "" {
+		add("database.existing_password", "existing_password 只与 policy=reuse 搭配使用")
 	}
 
 	if in.Redis.Port < 0 || in.Redis.Port > 65535 {

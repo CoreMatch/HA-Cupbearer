@@ -180,8 +180,10 @@ func (e *Engine) Plan(ctx context.Context, in *Inputs) (*PlanReport, error) {
 	// 1.5 基础设施：探测现状，报"接管复用 / 将拉起 / 端口冲突 / 需补口令"。
 	rep.Items = append(rep.Items, e.planInfra(ctx, in)...)
 
-	// 2. 数据库：管理口可达时如实报"已存在/将创建"；不可达报阻断。
-	// 管理口令留空且允许拉起基础设施时，库检查推迟到 infra 之后（口令为生成值）。
+	// 2. 数据库：先探测后报——应用账号已存在且口令不一致时，把冲突与所选
+	// 处置的结局报出来；整步将被 skip 或冲突未决时不再报逐库细节（避免
+	// "写着将创建、实际不会跑"的误导）。管理口令留空且允许拉起基础设施时，
+	// 库检查推迟到 infra 之后（口令为生成值）。
 	if in.Database.AdminPassword == "" && e.dk != nil && in.Infra.InfraLaunch() {
 		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "execute",
 			Target: "(基础设施拉起后)", Detail: "管理口令将为生成值；建库检查在 MySQL 就绪后执行"})
@@ -190,33 +192,26 @@ func (e *Engine) Plan(ctx context.Context, in *Inputs) (*PlanReport, error) {
 			Target: fmt.Sprintf("%s:%d", in.Database.AdminHost, in.Database.AdminPort),
 			Detail: "MySQL 管理口不可达：" + derr.Error()})
 	} else {
-		for _, name := range []string{in.Database.Names.HRPAuth, in.Database.Names.YGG,
-			in.Database.Names.HASkinLib, in.Database.Names.MCA} {
-			exists, err := databaseExists(ctx, db, name)
-			if err != nil {
-				rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
-					Target: name, Detail: err.Error()})
-				continue
-			}
-			if exists {
-				rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "skip-exists",
-					Target: name, Detail: "库已存在，原样保留（不改动任何数据）"})
-			} else {
-				rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "execute",
-					Target: name, Detail: "将执行 CREATE DATABASE IF NOT EXISTS（utf8mb4）"})
-			}
-		}
+		suppress := false
 		if in.Database.ManageUser != nil && *in.Database.ManageUser {
-			uexists, err := userExists(ctx, db, in.Database.AppUser)
-			if err != nil {
-				rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
-					Target: in.Database.AppUser, Detail: err.Error()})
-			} else if uexists {
-				rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "skip-exists",
-					Target: in.Database.AppUser, Detail: "应用账号已存在，保留；仅补齐授权（GRANT 幂等）"})
-			} else {
-				rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "execute",
-					Target: in.Database.AppUser, Detail: "将创建应用账号并授权四个库（口令为生成值）"})
+			suppress = e.planAppUser(rep, ctx, in, db, st)
+		}
+		if !suppress {
+			for _, name := range []string{in.Database.Names.HRPAuth, in.Database.Names.YGG,
+				in.Database.Names.HASkinLib, in.Database.Names.MCA} {
+				exists, err := databaseExists(ctx, db, name)
+				if err != nil {
+					rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
+						Target: name, Detail: err.Error()})
+					continue
+				}
+				if exists {
+					rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "skip-exists",
+						Target: name, Detail: "库已存在，原样保留（不改动任何数据）"})
+				} else {
+					rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "execute",
+						Target: name, Detail: "将执行 CREATE DATABASE IF NOT EXISTS（utf8mb4）"})
+				}
 			}
 		}
 		db.Close()
@@ -382,52 +377,124 @@ func (e *Engine) execute(ctx context.Context, run *Run, in *Inputs) {
 			len(created), strings.Join(created, ", ")))
 	}
 
-	// 2. 数据库。
-	dbResults, err := EnsureDatabases(ctx, in)
-	if err != nil {
-		setStep(StepDatabases, StepFailed, err.Error())
+	// 2. 数据库：先探测后动手。应用账号已存在且口令与本次凭据不一致时，
+	// 按所选处置显式处理（takeover/reuse/skip）；冲突而未给处置 = 显式失败。
+	// 任何处置都不允许半途改一半：改口令/验证既有口令都在建库之前完成，
+	// 失败即整体退出（重跑探测到的仍是同一冲突，收敛不悬挂）。
+	manageUser := in.Database.ManageUser == nil || *in.Database.ManageUser
+	appPassword := secrets[KeyAppDBPassword]
+	action := DBActionProceed
+	prefix := ""
+	if manageUser {
+		var probeNote string
+		action, probeNote, err = probeDBStep(ctx, in, appPassword)
+		if err != nil {
+			setStep(StepDatabases, StepFailed, err.Error())
+			e.finish(run)
+			return
+		}
+		addNote(probeNote)
+	}
+	switch action {
+	case DBActionSkip:
+		setStep(StepDatabases, StepSkipped, fmt.Sprintf(
+			"应用账号 %s 已存在且口令与本次凭据不一致：按 skip 处置保留现状——不建库、不改账号、不验证连通，只补其余步骤。如是误选，请改选 takeover 或 reuse 重跑",
+			in.Database.AppUser))
+	case DBActionConflict:
+		setStep(StepDatabases, StepFailed, fmt.Sprintf(
+			"应用账号 %s 已存在且口令与本次凭据不一致（本次候选凭据指纹 %s）：必须选择处置后重跑——takeover（改口令到本次凭据）/ reuse（沿用既有口令，需提供当前口令）/ skip（保留现状只补其余步骤）。本次运行未改动任何数据库对象",
+			in.Database.AppUser, Mask(appPassword)))
 		e.finish(run)
 		return
-	}
-	var createdDBs, keptDBs []string
-	for _, r := range dbResults {
-		if r.Created {
-			createdDBs = append(createdDBs, r.Name)
-		} else {
-			keptDBs = append(keptDBs, r.Name)
-		}
-	}
-	userDetail := ""
-	if in.Database.ManageUser != nil && *in.Database.ManageUser {
-		userCreated, uerr := EnsureAppUser(ctx, in, secrets[KeyAppDBPassword])
-		if uerr != nil {
-			setStep(StepDatabases, StepFailed, uerr.Error())
+	case DBActionTakeover:
+		if aerr := AlterAppPassword(ctx, in, appPassword); aerr != nil {
+			setStep(StepDatabases, StepFailed, "takeover 改口令失败："+aerr.Error())
 			e.finish(run)
 			return
 		}
-		if userCreated {
-			userDetail = fmt.Sprintf("；创建应用账号 %s 并授权", in.Database.AppUser)
-		} else {
-			userDetail = fmt.Sprintf("；应用账号 %s 已存在，仅补齐授权", in.Database.AppUser)
-		}
-		if verr := VerifyAppAccess(ctx, in, secrets[KeyAppDBPassword]); verr != nil {
-			setStep(StepDatabases, StepFailed, "建库完成但应用账号连通性验证失败："+verr.Error())
+		addNote(fmt.Sprintf("takeover：既有账号 %s 的口令已改为本次凭据（指纹 %s）",
+			in.Database.AppUser, Mask(appPassword)))
+		prefix = "takeover：既有账号口令已改为本次凭据。"
+	case DBActionReuse:
+		ok, cerr := CheckAppPassword(ctx, in, in.Database.ExistingPassword)
+		if cerr != nil {
+			setStep(StepDatabases, StepFailed, "验证 existing_password 失败："+cerr.Error())
 			e.finish(run)
 			return
 		}
-		userDetail += "；应用账号逐库连通性验证通过"
-	} else {
-		userDetail = "；manage_user=false：跳过账号创建（既有账号由运维保证口令一致）"
+		if !ok {
+			setStep(StepDatabases, StepFailed,
+				"policy=reuse 但提供的 existing_password 与既有账号不匹配：本次运行未改动任何数据库对象，请核对口令后重跑")
+			e.finish(run)
+			return
+		}
+		adopted, drifted, aerr := e.store.AdoptSecrets(map[string]string{KeyAppDBPassword: in.Database.ExistingPassword})
+		if aerr != nil {
+			setStep(StepDatabases, StepFailed, "收编既有口令进状态失败："+aerr.Error())
+			e.finish(run)
+			return
+		}
+		appPassword = in.Database.ExistingPassword
+		secrets[KeyAppDBPassword] = appPassword // 后续 .env/渲染步沿用活值
+		mutate(func() { run.Secrets[KeyAppDBPassword] = Mask(appPassword) })
+		if len(adopted) > 0 {
+			addNote("reuse：既有账号口令已收编进状态（DB_PASSWORD）")
+		}
+		if len(drifted) > 0 {
+			addNote("reuse：既有账号口令与状态原值不同，活值胜出、状态已改写（指纹 " + Mask(appPassword) + "）")
+		}
+		prefix = "reuse：沿用既有账号口令（已收编进状态）。"
+	case DBActionProceed:
+		// 无冲突：照常创建或幂等无操作。
 	}
-	status := StepOK
-	detail := fmt.Sprintf("建库 %d 个（%s），已存在保留 %d 个（%s）%s",
-		len(createdDBs), strings.Join(createdDBs, ", "),
-		len(keptDBs), strings.Join(keptDBs, ", "), userDetail)
-	if len(createdDBs) == 0 {
-		status = StepSkipped
-		detail = fmt.Sprintf("四个库均已存在，原样保留（%s）%s", strings.Join(keptDBs, ", "), userDetail)
+
+	if action != DBActionSkip {
+		dbResults, err := EnsureDatabases(ctx, in)
+		if err != nil {
+			setStep(StepDatabases, StepFailed, err.Error())
+			e.finish(run)
+			return
+		}
+		var createdDBs, keptDBs []string
+		for _, r := range dbResults {
+			if r.Created {
+				createdDBs = append(createdDBs, r.Name)
+			} else {
+				keptDBs = append(keptDBs, r.Name)
+			}
+		}
+		userDetail := ""
+		if manageUser {
+			userCreated, uerr := EnsureAppUser(ctx, in, appPassword)
+			if uerr != nil {
+				setStep(StepDatabases, StepFailed, uerr.Error())
+				e.finish(run)
+				return
+			}
+			if userCreated {
+				userDetail = fmt.Sprintf("；创建应用账号 %s 并授权", in.Database.AppUser)
+			} else {
+				userDetail = fmt.Sprintf("；应用账号 %s 已存在，仅补齐授权", in.Database.AppUser)
+			}
+			if verr := VerifyAppAccess(ctx, in, appPassword); verr != nil {
+				setStep(StepDatabases, StepFailed, "建库完成但应用账号连通性验证失败："+verr.Error())
+				e.finish(run)
+				return
+			}
+			userDetail += "；应用账号逐库连通性验证通过"
+		} else {
+			userDetail = "；manage_user=false：跳过账号创建（既有账号由运维保证口令一致）"
+		}
+		status := StepOK
+		detail := fmt.Sprintf("建库 %d 个（%s），已存在保留 %d 个（%s）%s",
+			len(createdDBs), strings.Join(createdDBs, ", "),
+			len(keptDBs), strings.Join(keptDBs, ", "), userDetail)
+		if len(createdDBs) == 0 {
+			status = StepSkipped
+			detail = fmt.Sprintf("四个库均已存在，原样保留（%s）%s", strings.Join(keptDBs, ", "), userDetail)
+		}
+		setStep(StepDatabases, status, prefix+detail)
 	}
-	setStep(StepDatabases, status, detail)
 
 	// 3. 签名密钥。
 	secAbs, _ := filepath.Abs(in.Paths.SecretsDir)
@@ -650,6 +717,151 @@ func planInfraOne(ctx context.Context, kind string, hostPort int, dk InfraDocker
 	}
 	return PlanItem{Step: StepInfra, Action: "generate", Target: kind,
 		Detail: fmt.Sprintf("将一键拉起受管 %s 容器（命名卷持久化，口令生成，仅以指纹记录），并等待其真正可用", strings.ToUpper(kind))}
+}
+
+// DBAction 是 databases 步经探测决定的动作。
+type DBAction string
+
+const (
+	DBActionProceed  DBAction = "proceed"  // 无冲突：照常创建或幂等无操作
+	DBActionConflict DBAction = "conflict" // 账号已存在且口令不一致、未给处置：显式失败
+	DBActionTakeover DBAction = "takeover" // 冲突 + takeover：改口令到本次凭据
+	DBActionReuse    DBAction = "reuse"    // 冲突 + reuse：验证并沿用既有口令
+	DBActionSkip     DBAction = "skip"     // 冲突 + skip：整步保留现状
+)
+
+// decideDBAction 由纯事实推导动作（可单测，不依赖 MySQL）：处置只在
+// "账号已存在且候选口令验证不过"时生效；否则照常（创建或幂等无操作）。
+func decideDBAction(userExists, candidateMatches bool, policy string) DBAction {
+	if !userExists || candidateMatches {
+		return DBActionProceed
+	}
+	switch policy {
+	case PolicyTakeover:
+		return DBActionTakeover
+	case PolicyReuse:
+		return DBActionReuse
+	case PolicySkip:
+		return DBActionSkip
+	default:
+		return DBActionConflict
+	}
+}
+
+// probeDBStep 探测 databases 步现状（管理口可达性、应用账号存在性、候选
+// 口令匹配性），返回动作与人话探测结论。探测本身只读，不改任何对象。
+func probeDBStep(ctx context.Context, in *Inputs, candidatePassword string) (DBAction, string, error) {
+	db, err := openAdmin(ctx, in)
+	if err != nil {
+		return "", "", fmt.Errorf("MySQL 管理口不可达（%s:%d，账号 %s）：%v",
+			in.Database.AdminHost, in.Database.AdminPort, in.Database.AdminUser, err)
+	}
+	defer db.Close()
+	exists, err := userExists(ctx, db, in.Database.AppUser)
+	if err != nil {
+		return "", "", fmt.Errorf("探测应用账号 %s 是否存在失败：%w", in.Database.AppUser, err)
+	}
+	if !exists {
+		note := fmt.Sprintf("探测：应用账号 %s 不存在，将创建并授权", in.Database.AppUser)
+		if in.Database.Policy != "" {
+			note += fmt.Sprintf("（处置 %s 在无冲突时不生效）", in.Database.Policy)
+		}
+		return DBActionProceed, note, nil
+	}
+	ok, err := CheckAppPassword(ctx, in, candidatePassword)
+	if err != nil {
+		return "", "", fmt.Errorf("探测应用账号 %s 口令匹配性失败：%w", in.Database.AppUser, err)
+	}
+	if ok {
+		note := fmt.Sprintf("探测：应用账号 %s 已存在且本次凭据验证通过（幂等无操作）", in.Database.AppUser)
+		if in.Database.Policy != "" {
+			note += fmt.Sprintf("（处置 %s 在无冲突时不生效）", in.Database.Policy)
+		}
+		return DBActionProceed, note, nil
+	}
+	action := decideDBAction(true, false, in.Database.Policy)
+	return action, fmt.Sprintf("探测：应用账号 %s 已存在且口令与本次凭据不一致（冲突；处置：%s）",
+		in.Database.AppUser, policyLabel(in.Database.Policy)), nil
+}
+
+func policyLabel(policy string) string {
+	if policy == "" {
+		return "未选择——将显式失败"
+	}
+	return policy
+}
+
+// planAppUser 在计划中报应用账号的探测结论与处置结局。返回 true 表示
+// databases 步整体将被跳过或冲突未决（此时不再报逐库细节）。
+func (e *Engine) planAppUser(rep *PlanReport, ctx context.Context, in *Inputs, db *sql.DB, st *State) bool {
+	user := in.Database.AppUser
+	uexists, err := userExists(ctx, db, user)
+	if err != nil {
+		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
+			Target: user, Detail: err.Error()})
+		return false
+	}
+	if !uexists {
+		detail := "将创建应用账号并授权四个库（口令为生成值）"
+		if in.Database.Policy != "" {
+			detail = fmt.Sprintf("应用账号不存在：将创建并授权（处置 %s 在无冲突时不生效）", in.Database.Policy)
+		}
+		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "execute",
+			Target: user, Detail: detail})
+		return false
+	}
+	// 账号已在：以状态中的凭据为候选探测匹配性（无状态值 = 将生成，必冲突）。
+	candidate := st.Secrets[KeyAppDBPassword]
+	if candidate != "" {
+		ok, cerr := CheckAppPassword(ctx, in, candidate)
+		if cerr != nil {
+			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
+				Target: user, Detail: "探测既有账号口令匹配性失败：" + cerr.Error()})
+			return true
+		}
+		if ok {
+			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "skip-exists",
+				Target: user, Detail: "应用账号已存在且本状态凭据验证通过：幂等无操作（仅补齐 GRANT）"})
+			return false
+		}
+	}
+	detail := "应用账号已存在且口令与本次凭据不一致"
+	if candidate == "" {
+		detail = "应用账号已存在；本次将生成新凭据，必与既有口令不一致"
+	}
+	switch in.Database.Policy {
+	case PolicyTakeover:
+		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "execute",
+			Target: user, Detail: detail + "；处置 takeover：将把账号口令改为本次凭据，补齐授权并逐库验证连通"})
+	case PolicyReuse:
+		if strings.TrimSpace(in.Database.ExistingPassword) == "" {
+			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
+				Target: user, Detail: detail + "；处置 reuse 需提供 existing_password（既有账号当前口令）"})
+			return true
+		}
+		ok, cerr := CheckAppPassword(ctx, in, in.Database.ExistingPassword)
+		if cerr != nil {
+			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
+				Target: user, Detail: "验证提供的 existing_password 失败：" + cerr.Error()})
+			return true
+		}
+		if !ok {
+			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
+				Target: user, Detail: detail + "；提供的 existing_password 与既有账号不匹配，请核对口令"})
+			return true
+		}
+		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "reuse",
+			Target: user, Detail: detail + "；处置 reuse：existing_password 验证通过，将沿用并收编进状态（不改口令）"})
+	case PolicySkip:
+		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "skip-exists",
+			Target: "(整步)", Detail: detail + "；处置 skip：databases 步整体保留现状（不建库、不改账号），只补其余步骤"})
+		return true
+	default:
+		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
+			Target: user, Detail: detail + "；须选择处置后继续：takeover（改口令到本次凭据）/ reuse（沿用既有口令）/ skip（保留本步现状）"})
+		return true
+	}
+	return false
 }
 
 // ErrRunInProgress 表示已有运行中的初始化任务（单飞）。

@@ -3,12 +3,13 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 )
 
 // 数据库步骤：建库建账号。全部使用幂等语句
@@ -129,6 +130,50 @@ func VerifyAppAccess(ctx context.Context, in *Inputs, appPassword string) error 
 			return fmt.Errorf("应用账号 %s 连不上库 %s：%w", in.Database.AppUser, name, err)
 		}
 		db.Close()
+	}
+	return nil
+}
+
+// mysqlErrAccessDenied 是 MySQL 的 ER_ACCESS_DENIED_ERROR（口令/账号不匹配）。
+const mysqlErrAccessDenied = 1045
+
+// CheckAppPassword 验证给定口令能否以应用账号登录（连管理口主机:端口，
+// 不指定库名，只验 USAGE 级连通）。口令不匹配返回 (false, nil)；
+// 连接不可达等其他错误返回 (false, err)。
+func CheckAppPassword(ctx context.Context, in *Inputs, password string) (bool, error) {
+	dsn := fmt.Sprintf("%s:%s@tcp(%s)/?timeout=10s",
+		in.Database.AppUser, password,
+		net.JoinHostPort(in.Database.AdminHost, strconv.Itoa(in.Database.AdminPort)))
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return false, fmt.Errorf("open app user connection: %w", err)
+	}
+	defer db.Close()
+	if err := db.PingContext(ctx); err != nil {
+		var me *mysql.MySQLError
+		if errors.As(err, &me) && me.Number == mysqlErrAccessDenied {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// AlterAppPassword 经管理口把应用账号口令改为新值（takeover 处置）。
+// 单条 ALTER USER 原子生效；随后 FLUSH PRIVILEGES 使其立即生效。
+func AlterAppPassword(ctx context.Context, in *Inputs, newPassword string) error {
+	db, err := sql.Open("mysql", adminDSN(in))
+	if err != nil {
+		return fmt.Errorf("open admin connection: %w", err)
+	}
+	defer db.Close()
+	stmt := fmt.Sprintf("ALTER USER `%s`@`%%` IDENTIFIED BY '%s'",
+		in.Database.AppUser, escapeSQLString(newPassword))
+	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		return fmt.Errorf("alter user %s: %w", in.Database.AppUser, err)
+	}
+	if _, err := db.ExecContext(ctx, "FLUSH PRIVILEGES"); err != nil {
+		return fmt.Errorf("flush privileges: %w", err)
 	}
 	return nil
 }
