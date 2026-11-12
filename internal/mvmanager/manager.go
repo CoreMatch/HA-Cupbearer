@@ -32,12 +32,12 @@ import (
 type Config struct {
 	Enabled    bool   `yaml:"enabled"`
 	BinaryPath string `yaml:"binary_path"` // 空 = 自动探测候选位置
-	Listen     string `yaml:"listen"`      // 默认 127.0.0.1:18081
+	Listen     string `yaml:"listen"`      // 默认 127.0.0.1:2771
 	WorkDir    string `yaml:"work_dir"`    // 默认 ./data/maintenance-view
 }
 
 const (
-	DefaultListen     = "127.0.0.1:18081"
+	DefaultListen     = "127.0.0.1:2771"
 	DefaultWorkDir    = "./data/maintenance-view"
 	maxPortProbe      = 10
 	healthTimeout     = 3 * time.Second
@@ -214,11 +214,11 @@ func (m *Manager) findBinary() string {
 func (m *Manager) pickListen() (string, bool) {
 	host, portStr, err := net.SplitHostPort(m.cfg.Listen)
 	if err != nil {
-		host, portStr = "127.0.0.1", "18081"
+		host, portStr = "127.0.0.1", "2771"
 	}
 	base, err := strconv.Atoi(portStr)
 	if err != nil {
-		base = 18081
+		base = 2771
 	}
 	for i := 0; i < maxPortProbe; i++ {
 		addr := net.JoinHostPort(host, strconv.Itoa(base+i))

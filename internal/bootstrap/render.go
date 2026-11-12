@@ -112,7 +112,7 @@ func EnvForContainer(in *Inputs, secrets map[string]string, facts *InfraFacts) m
 		"SDKHANDLER_PORT":             "2704",
 		"SDKHANDLER_MAINTENANCE_PORT": "2705",
 		"CUPBEARER_PORT":              "18080",
-		"MAINTENANCEVIEW_PORT":        "18081",
+		"MAINTENANCEVIEW_PORT":        "2771",
 		"WEBUI_PORT":                  "8080",
 		"WEBUI_BIND":                  "0.0.0.0",
 

@@ -59,8 +59,10 @@ Record the arrangement and its boundary:
 - Port defaults in compose: hrpauth 2778, yggdrasil-api 2770, haskinlib
   2701, haskinproxy 2702, winnerproxy 2777, mca-server 9178 listen on all
   interfaces; sdkhandler 2704/2705, cupbearer 18080, and maintenance-view
-  18081 are loopback-bound by default (`SDKHANDLER_BIND` / `CUPBEARER_BIND` /
-  `MAINTENANCEVIEW_BIND` override the bind address). The optional `webui`
+  2771 are loopback-bound by default (`SDKHANDLER_BIND` / `CUPBEARER_BIND` /
+  `MAINTENANCEVIEW_BIND` override the bind address). Maintenance-view was
+  unified onto 2771 (its bare-metal production port); the former `18081`
+  was a typo and is retired. The optional `webui`
   profile adds an nginx sidecar on 8080 serving the built frontend
   (`deploy/docker-compose.yml`, per-service `ports` blocks).
 - Secrets (`private_key.pem`/`public_key.pem`) must be placed into

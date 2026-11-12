@@ -317,7 +317,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 | mca-server | 9178 | all interfaces | game-facing |
 | ha-webui-sdkhandler | 2704, 2705 | **127.0.0.1** | internal build service |
 | ha-cupbearer | 18080 | **127.0.0.1** | internal delivery service |
-| ha-services-maintenance-view | 18081 | **127.0.0.1** | ops panel, unauthenticated |
+| ha-services-maintenance-view | 2771 | **127.0.0.1** | ops panel (unified to the bare-metal production port; the former `18081` was a typo) |
 | ha-webui-nginx (optional) | 8080 | all interfaces | profile `webui` |
 
 Internal services are loopback-bound by default; inter-service calls use the

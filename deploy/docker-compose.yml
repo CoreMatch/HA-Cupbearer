@@ -366,9 +366,9 @@ services:
     ports:
       # 运维面板（半成品、无鉴权）：默认仅绑定回环。
       # 远程访问请用 SSH 隧道；确需直接暴露时改 MAINTENANCEVIEW_BIND 并配防火墙。
-      - "${MAINTENANCEVIEW_BIND:-127.0.0.1}:${MAINTENANCEVIEW_PORT:-18081}:18081"
+      - "${MAINTENANCEVIEW_BIND:-127.0.0.1}:${MAINTENANCEVIEW_PORT:-2771}:2771"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:18081/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2771/healthz || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

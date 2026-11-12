@@ -16,7 +16,7 @@ type Config struct {
 type MaintenanceViewConfig struct {
 	Enabled    *bool  `yaml:"enabled" json:"enabled,omitempty"`
 	BinaryPath string `yaml:"binary_path" json:"binary_path"` // 空 = 自动探测
-	Listen     string `yaml:"listen" json:"listen"`           // 默认 127.0.0.1:18081
+	Listen     string `yaml:"listen" json:"listen"`           // 默认 127.0.0.1:2771
 	WorkDir    string `yaml:"work_dir" json:"work_dir"`       // 默认 ./data/maintenance-view
 }
 
