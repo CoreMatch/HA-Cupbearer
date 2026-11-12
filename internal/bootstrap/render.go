@@ -96,9 +96,13 @@ func EnvForContainer(in *Inputs, secrets map[string]string, facts *InfraFacts) m
 		"MCA_JOIN_TARGET_HOST":    "",
 		"MCA_JOIN_TARGET_PORT":    "0",
 
-		"SDKHANDLER_BIND":             "127.0.0.1",
-		"CUPBEARER_BIND":              "127.0.0.1",
-		"MAINTENANCEVIEW_BIND":        "127.0.0.1",
+		"SDKHANDLER_BIND":      "127.0.0.1",
+		"CUPBEARER_BIND":       "127.0.0.1",
+		"MAINTENANCEVIEW_BIND": "127.0.0.1",
+		// 服务默认端口。注意：MV 向导（HA-Services-MaintenanceView
+		// frontend/src/wizard/BootstrapStep.tsx 的 PUBLIC_URL_FIELDS）按"回环 +
+		// 这些端口"预填六个对外地址的本机默认值；改动这里的端口须同步那里与其
+		// knowledge/0008 的记载。
 		"HRPAUTH_PORT":                "2778",
 		"YGG_PORT":                    "2770",
 		"HASKINLIB_PORT":              "2701",
