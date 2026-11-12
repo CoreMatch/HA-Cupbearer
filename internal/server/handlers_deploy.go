@@ -72,15 +72,23 @@ func (h *Handler) GetDeployManifests(c *gin.Context) {
 		ServiceVersion string `json:"service_version"`
 		Manager        string `json:"manager"`
 		SourcePath     string `json:"source_path"`
+		// ArtifactSource 是清单声明的裸金属产物来源
+		//（local_path | ci_release | grail；external/plugin 类与未声明为
+		// 空串）。契约 ha-cupbearer.yaml v1.5.0：供运维向导展示与核对
+		// 来源声明，纯增量字段。
+		ArtifactSource string `json:"artifact_source"`
 	}
 	views := make([]view, 0, len(manifests))
 	for _, m := range manifests {
 		manager := m.Baremetal.Process.Manager
+		artifactSource := m.Baremetal.Artifact.Source
 		if m.IsExternal() {
 			manager = ""
+			artifactSource = ""
 		}
 		if m.IsPlugin() {
 			manager = "plugin"
+			artifactSource = ""
 		}
 		views = append(views, view{
 			Project:        m.Project,
@@ -90,6 +98,7 @@ func (h *Handler) GetDeployManifests(c *gin.Context) {
 			ServiceVersion: m.ServiceVersion,
 			Manager:        manager,
 			SourcePath:     m.SourcePath,
+			ArtifactSource: artifactSource,
 		})
 	}
 

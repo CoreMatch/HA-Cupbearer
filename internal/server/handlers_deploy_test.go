@@ -140,6 +140,110 @@ func buildOrchestrationEnv(t *testing.T) (*orchestrator.Orchestrator, *models.Co
 	return orch, cfg, port
 }
 
+// TestGetDeployManifestsArtifactSource：聚合清单视图自契约 1.5.0 起暴露
+// 每个项目声明的裸金属产物来源；external 类项目恒为空串。
+func TestGetDeployManifestsArtifactSource(t *testing.T) {
+	base := t.TempDir()
+	scanRoot := filepath.Join(base, "scan")
+
+	svc := &manifest.Manifest{
+		ManifestVersion: 1,
+		Kind:            "service",
+		Project:         "svc-a",
+		DisplayName:     "Service A",
+		Group:           "core",
+		ServiceVersion:  "1.0.0",
+		Facts: manifest.Facts{
+			Ports: []manifest.Port{{Name: "http", Port: 19999, Exposure: "loopback"}},
+			Health: manifest.Health{HTTP: &manifest.HTTPProbe{
+				PortName: "http", Path: "/healthz", ExpectStatus: 200,
+				TimeoutSeconds: 2, IntervalSeconds: 1, Retries: 1,
+			}},
+		},
+		Baremetal: manifest.Baremetal{
+			Process:  manifest.ProcessSpec{Manager: "tinyvisor"},
+			Install:  manifest.InstallSpec{Root: filepath.Join(base, "install", "svc-a"), Layout: "releases", BinaryName: "svc-a", KeepReleases: 3},
+			Artifact: manifest.ArtifactSpec{Source: "local_path", LocalPath: filepath.Join(base, "svc-a-linux-amd64")},
+		},
+	}
+	data, err := yaml.Marshal(svc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(scanRoot, "svc-a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scanRoot, "svc-a", "deploy-manifest.yaml"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// external 依赖声明：无进程、无产物来源。
+	extDir := filepath.Join(base, "external")
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ext := `manifest_version: 1
+kind: external
+project: mysql
+display_name: MySQL
+group: infra
+facts:
+  ports:
+    - name: mysql
+      port: 3306
+      exposure: loopback
+  external:
+    host: 127.0.0.1
+`
+	if err := os.WriteFile(filepath.Join(extDir, "mysql.yaml"), []byte(ext), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &models.Config{}
+	cfg.Orchestration.Enabled = true
+	cfg.Orchestration.ScanRoots = []string{scanRoot}
+	cfg.Orchestration.ExternalManifests = extDir
+	cfg.Orchestration.StateDir = filepath.Join(base, "state")
+	cfg.Storage.ArtifactsRoot = filepath.Join(base, "artifacts")
+	orch := orchestrator.New(cfg, &config.Credentials{})
+	if _, rep := orch.Load(); !rep.OK() {
+		t.Fatalf("aggregate validation failed: %v", rep.Errors)
+	}
+	router := newDeployTestEnv(t, orch, cfg)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/deploy/manifests", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	var out struct {
+		Data struct {
+			Count    int `json:"count"`
+			Projects []struct {
+				Project        string `json:"project"`
+				Manager        string `json:"manager"`
+				ArtifactSource string `json:"artifact_source"`
+			} `json:"projects"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.Data.Count != 2 {
+		t.Fatalf("count = %d, want 2: %s", out.Data.Count, w.Body.String())
+	}
+	got := map[string]string{}
+	for _, p := range out.Data.Projects {
+		got[p.Project] = p.ArtifactSource
+	}
+	if got["svc-a"] != "local_path" {
+		t.Errorf("svc-a artifact_source = %q, want local_path", got["svc-a"])
+	}
+	if got["mysql"] != "" {
+		t.Errorf("external artifact_source = %q, want empty", got["mysql"])
+	}
+}
+
 func TestGetDeployPreflight(t *testing.T) {
 	orch, cfg, port := buildOrchestrationEnv(t)
 	router := newDeployTestEnv(t, orch, cfg)
