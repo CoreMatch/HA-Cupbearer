@@ -7,7 +7,7 @@ Accepted (records current state)
 ## Context
 
 HA-Cupbearer is "the backend service for HA service rollout and
-artifact delivery" (`README.md:L3-L3 fp=077497ea ~ `HA-Cupbearer` is the backend service fo`). Its external contract is HA-Contract
+artifact delivery" (`README.md:L3-L3 fp=1fdd8640 ~ `HA-Cupbearer` is the backend service fo`). Its external contract is HA-Contract
 `/home/lnb/Desktop/HA/maintanance/HA-Cupbearer/knowledge/0006-version-manifest.md`.
 
 ## Decision
@@ -57,7 +57,7 @@ middleware verifies identity).
 - `internal/server/router.go::NewRouter` — GET-only route table.
 - `internal/server/handlers.go::GetArtifact` — artifact serving with traversal guard.
 - `internal/server/handlers.go::loadManifest` — manifest loaded from disk per request; missing file → empty manifest.
-- `README.md:L5-L9 fp=163153b3 ~ Current scope` — stated current scope.
+- `README.md:L5-L9 fp=cbaf5f7e ~ Current scope` — stated current scope.
 - Contract:
   `/home/lnb/Desktop/HA/maintanance/HA-Cupbearer/knowledge/0006-version-manifest.md::Transport`,
   `/home/lnb/Desktop/HA/maintanance/HA-Cupbearer/knowledge/0006-version-manifest.md::Purpose`.
