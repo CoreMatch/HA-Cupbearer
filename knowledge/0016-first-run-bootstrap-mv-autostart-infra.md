@@ -20,7 +20,7 @@ selected deployment path.
 ### Bootstrap layer (`internal/bootstrap/`)
 
 Independent of `orchestration.enabled`; available whenever the Cupbearer runs.
-Contract: HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.3.0
+Contract: HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.6.0
 (`/api/v1/deploy/bootstrap/*`). Steps, in order:
 
 1. **infra** — MySQL/Redis, standing per selected deployment path
@@ -52,11 +52,25 @@ Contract: HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.3.0
    `data/bootstrap/state.json` (0600, gitignored). Existing `.env` values are
    adopted first (`AdoptSecrets`): the live target wins, drift rewrites the
    state to match and warns — never the other way around.
-3. **databases** — `CREATE DATABASE IF NOT EXISTS` ×4 (utf8mb4; hrpa / ygg /
-   haskinlib / matchcorearena), `CREATE USER IF NOT EXISTS` + idempotent
-   GRANT for the app user, then per-database connectivity verification as the
-   app user. Migrations stay where they belong: each service migrates its own
-   schema at startup (`facts.migration.mode=auto_on_startup`).
+3. **databases** — probe-first, then act (`engine.go::probeDBStep`,
+   `decideDBAction`). Probes the admin port, app-account existence, and
+   whether this run's candidate credential verifies against a pre-existing
+   account. On no conflict it behaves as before: `CREATE DATABASE IF NOT
+   EXISTS` ×4 (utf8mb4; hrpa / ygg / haskinlib / matchcorearena), `CREATE
+   USER IF NOT EXISTS` + idempotent GRANT, per-database connectivity
+   verification as the app user. On a detected conflict (account pre-exists,
+   candidate credential fails to verify — re-initializing a machine or redoing
+   an interrupted init) the step resolves it explicitly via
+   `database.policy`: `takeover` (single atomic `ALTER USER` to this run's
+   credential), `reuse` (verify the operator-provided
+   `database.existing_password` before touching anything, then adopt it into
+   state), or `skip` (leave the whole step untouched, complete the remaining
+   steps). Conflict with no policy fails loud and changes nothing
+   (fail-closed, never half-applied); matching credentials stay an idempotent
+   no-op; with no conflict the policy is ignored. Plans report the probe
+   (account existence, credential match, chosen-policy outcome). Migrations
+   stay where they belong: each service migrates its own schema at startup
+   (`facts.migration.mode=auto_on_startup`).
 4. **signing-keys** — RSA-4096 pair byte-compatible with YGG's
    `generateKeyPair` (PKCS1 private 0600 / PKIX public 0644); existing pair
    kept; missing public derived from private; public-only fails loud.
@@ -64,6 +78,11 @@ Contract: HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.3.0
    preserved verbatim (drift warns), missing keys appended with a provenance
    comment (`internal/bootstrap/render.go::MergeEnvFile`). When infra is
    container-managed, `DB_HOST=mysql` / `REDIS_HOST=redis` (compose form).
+   `DB_PASSWORD` converges with the databases outcome: after a `skip` it is
+   omitted (an unverified credential never lands in `.env`); after a verified
+   outcome (plain proceed / takeover / reuse) a differing `.env` value is
+   provably stale and is updated in place to the verified credential,
+   reported loudly — the single documented exception to never-overwrite.
 6. **render-configs** (bare-metal target) — renders `deploy/config/*.tmpl`
    (previously referenced by zero Go code) to per-service output paths with
    the same variable dictionary; `DB_HOST=127.0.0.1:<host port>` form;
@@ -100,7 +119,14 @@ Replaces the legacy per-project bootstrap page. Shows infra cards (both
 address forms, one-click launch when absent), asks only the six public URLs
 (client-side blocking with plain-language messages), advanced overrides
 collapsed; preview (plan) and one-click run with per-step progress, masked
-fingerprints, and a retry button (resume).
+fingerprints, and a retry button (resume). The step also surfaces the
+database-conflict disposition: three selectable cards (skip / reuse /
+takeover) with plain-language consequences, skip preselected and the reason
+stated (least destructive, ignored when no conflict is probed); reuse reveals
+a required existing-password field; the advanced section carries the full
+admin connection (host/port/user/password), MySQL/Redis host ports, and a
+launch-allowed toggle. The preview shows the probe outcome and the chosen
+policy's effect; the run panel shows what happened.
 
 ## Consequences
 
@@ -127,14 +153,27 @@ fingerprints, and a retry button (resume).
 
 ## Evidence
 
-- `internal/bootstrap/engine.go::execute` — step pipeline and resume records.
+- `internal/bootstrap/engine.go::execute` — step pipeline and resume records;
+  `::probeDBStep`, `::decideDBAction`, `::planAppUser` — probe-first conflict
+  resolution and plan preview.
+- `internal/bootstrap/database.go::CheckAppPassword`, `::AlterAppPassword` —
+  credential probe and takeover.
 - `internal/bootstrap/infra.go::EnsureInfra` — per-path infra semantics.
 - `internal/bootstrap/render.go::MergeEnvFile`, `::EnvForBaremetal` — merge
-  and dual-form address derivation.
+  (with the verified-credential overwrite channel) and dual-form address
+  derivation.
 - `internal/mvmanager/manager.go::Start` — reuse-or-manage decision.
 - `internal/server/handlers_bootstrap.go` — endpoint surface.
 - `deploy/infra.yml` — infra compose (wipe procedure in header comment).
-- HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.3.0.
-- E2E transcript: this session's run records under `data/bootstrap/runs/`
+- HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.6.0.
+- E2E transcript: fresh-machine run records under `data/bootstrap/runs/`
   (ids 20261112-0124xx … 20261112-0134xx, including the killed `running`
-  record and its successful resume).
+  record and its successful resume). Conflict E2E (2026-11-12, ephemeral
+  MySQL `127.0.0.1:18506` with a pre-existing `hrpa` account on a different
+  password, shared `ha-infra` untouched): no-policy plan/run blocked loud
+  with zero changes; skip left the step untouched and omitted `DB_PASSWORD`
+  from `.env`; reuse with a wrong password blocked, with the right one
+  adopted it and updated a stale `.env` value in place; idempotent re-run
+  converged to a pure no-op; takeover (both `.env`-adopted and freshly
+  generated credentials) altered the account and rejected the old password;
+  a mid-run render failure resumed cleanly after fixing the path.

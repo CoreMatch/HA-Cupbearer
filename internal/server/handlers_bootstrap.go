@@ -14,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 首次运行初始化端点（契约：ha-cupbearer.yaml v1.3.0
+// 首次运行初始化端点（契约：ha-cupbearer.yaml v1.6.0
 // /api/v1/deploy/bootstrap/*）。设计边界：
 //   - 初始化层独立于 orchestration.enabled——全新机器上编排尚未启用时
 //     同样可用；变更面（plan/run）仍强制 X-Deploy-Token（fail-closed）；

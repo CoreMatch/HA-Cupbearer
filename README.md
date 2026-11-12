@@ -48,6 +48,17 @@ infrastructure stands per selected deployment path (`deploy/infra.yml`; wipe
 procedure in its header comment). Deploy token is auto-generated into the
 credentials file on first start when absent.
 
+The databases step probes before it acts. When the app account already
+exists and this run's credential does not verify against it (re-initializing
+a machine, or redoing an interrupted init), the step refuses without an
+explicit `database.policy`: `takeover` (alter the account password to this
+run's credential), `reuse` (keep it; the operator-provided
+`database.existing_password` is verified, then adopted into state), or
+`skip` (leave the whole step untouched, complete the remaining steps).
+Matching credentials stay a no-op; with no conflict the policy is ignored.
+Plans report the probe so the wizard shows what already exists, what was
+chosen, and what happened.
+
 ## Quick start
 
 1. Run the service; on first start it auto-generates `config.yaml` with the

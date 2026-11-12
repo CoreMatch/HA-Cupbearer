@@ -42,7 +42,7 @@ Verified serving behavior:
 ## Consequences (including recorded drift)
 
 - **README drift.** The `README.md` "API skeleton"
-  (`README.md:L65-L70 fp=cb23be80 ~ API skeleton`) lists only `/healthz`, `/api/v1/healthz`,
+  (`README.md:L76-L81 fp=cb23be80 ~ API skeleton`) lists only `/healthz`, `/api/v1/healthz`,
   `/api/v1/manifest`, `/api/v1/artifacts/:service/*filepath` and omits
   `/api/v1/projects`. The contract lists it; the README does not. Recorded
   as-is.
