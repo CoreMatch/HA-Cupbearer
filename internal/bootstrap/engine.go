@@ -184,6 +184,7 @@ func (e *Engine) Plan(ctx context.Context, in *Inputs) (*PlanReport, error) {
 	// 处置的结局报出来；整步将被 skip 或冲突未决时不再报逐库细节（避免
 	// "写着将创建、实际不会跑"的误导）。管理口令留空且允许拉起基础设施时，
 	// 库检查推迟到 infra 之后（口令为生成值）。
+	var dbRes dbResolution
 	if in.Database.AdminPassword == "" && e.dk != nil && in.Infra.InfraLaunch() {
 		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "execute",
 			Target: "(基础设施拉起后)", Detail: "管理口令将为生成值；建库检查在 MySQL 就绪后执行"})
@@ -194,7 +195,7 @@ func (e *Engine) Plan(ctx context.Context, in *Inputs) (*PlanReport, error) {
 	} else {
 		suppress := false
 		if in.Database.ManageUser != nil && *in.Database.ManageUser {
-			suppress = e.planAppUser(rep, ctx, in, db, st)
+			suppress, dbRes = e.planAppUser(rep, ctx, in, db, st)
 		}
 		if !suppress {
 			for _, name := range []string{in.Database.Names.HRPAuth, in.Database.Names.YGG,
@@ -228,13 +229,33 @@ func (e *Engine) Plan(ctx context.Context, in *Inputs) (*PlanReport, error) {
 	}
 
 	// 4. 容器 .env：报将合并/保留/漂移的键（机密键只报键名）。
+	// DB_PASSWORD 随 databases 结论预览：skip 不写入；接管/沿用将就地更新
+	// 陈旧值（"已有值绝不覆盖"铁律的唯一例外，见 MergeEnvFile）。
 	if in.Targets.Container {
 		envAbs, _ := filepath.Abs(in.Paths.EnvFile)
 		existingVals := ReadEnvFileValues(envAbs)
 		desired := EnvForContainer(in, projected, nil)
+		if dbRes == dbResSkip {
+			delete(desired, KeyAppDBPassword)
+			if _, ok := existingVals[KeyAppDBPassword]; !ok {
+				rep.Items = append(rep.Items, PlanItem{Step: StepEnvFile, Action: "skip-exists",
+					Target: KeyAppDBPassword,
+					Detail: "skip 处置：凭据未验证，DB_PASSWORD 不写入 .env（容器栈请自行提供）"})
+			}
+		}
+		resolvedCred := ""
+		switch dbRes {
+		case dbResTakeover:
+			resolvedCred = projected[KeyAppDBPassword]
+		case dbResReuse:
+			resolvedCred = in.Database.ExistingPassword
+		}
 		var add, keep, drift []string
 		for k, v := range desired {
 			if cur, ok := existingVals[k]; ok {
+				if k == KeyAppDBPassword && (dbRes == dbResTakeover || dbRes == dbResReuse) {
+					continue // 将按验证凭据就地更新，不计保留/漂移
+				}
 				keep = append(keep, k)
 				if cur != v && cur != "" {
 					drift = append(drift, k)
@@ -247,6 +268,22 @@ func (e *Engine) Plan(ctx context.Context, in *Inputs) (*PlanReport, error) {
 			Target: envAbs,
 			Detail: fmt.Sprintf("将补齐 %d 个缺失变量，保留 %d 个已有值（已有值绝不覆盖）",
 				len(add), len(keep))})
+		if dbRes == dbResTakeover || dbRes == dbResReuse {
+			if cur, ok := existingVals[KeyAppDBPassword]; ok {
+				if resolvedCred != "" && cur == resolvedCred {
+					rep.Items = append(rep.Items, PlanItem{Step: StepEnvFile, Action: "skip-exists",
+						Target: KeyAppDBPassword, Detail: "已有值与将验证的凭据一致，原样保留"})
+				} else {
+					label := "（凭据将生成）"
+					if resolvedCred != "" {
+						label = "（" + Mask(resolvedCred) + "）"
+					}
+					rep.Items = append(rep.Items, PlanItem{Step: StepEnvFile, Action: "execute",
+						Target: KeyAppDBPassword,
+						Detail: "已有值与将验证的凭据不一致（陈旧值）：将就地更新 " + label})
+				}
+			}
+		}
 		if len(drift) > 0 {
 			rep.Items = append(rep.Items, PlanItem{Step: StepEnvFile, Action: "warn-drift",
 				Target: envAbs,
@@ -385,6 +422,7 @@ func (e *Engine) execute(ctx context.Context, run *Run, in *Inputs) {
 	appPassword := secrets[KeyAppDBPassword]
 	action := DBActionProceed
 	prefix := ""
+	dbCredsVerified := false // 应用账号逐库验证通过（.env 覆写陈旧口令的依据）
 	if manageUser {
 		var probeNote string
 		action, probeNote, err = probeDBStep(ctx, in, appPassword)
@@ -481,6 +519,7 @@ func (e *Engine) execute(ctx context.Context, run *Run, in *Inputs) {
 				e.finish(run)
 				return
 			}
+			dbCredsVerified = true
 			userDetail += "；应用账号逐库连通性验证通过"
 		} else {
 			userDetail = "；manage_user=false：跳过账号创建（既有账号由运维保证口令一致）"
@@ -518,10 +557,21 @@ func (e *Engine) execute(ctx context.Context, run *Run, in *Inputs) {
 		setStep(StepKeys, StepSkipped, fmt.Sprintf("密钥对已存在，原样保留（指纹 %s）", keyRes.Fingerprint))
 	}
 
-	// 4. 容器 .env。
+	// 4. 容器 .env。DB_PASSWORD 随 databases 步的结局收敛：
+	//   - skip：凭据未验证，绝不写入（写未验证凭据会污染后续运行）；
+	//   - 验证通过（照常/接管/沿用）：既有值若不同则可证明是陈旧值
+	//    （服务用它连不上真实账号），就地更新为验证过的凭据并如实报告。
 	if in.Targets.Container {
 		envAbs, _ := filepath.Abs(in.Paths.EnvFile)
-		added, kept, drifted, merr := MergeEnvFile(envAbs, EnvForContainer(in, secrets, facts))
+		desired := EnvForContainer(in, secrets, facts)
+		overwrite := map[string]bool{}
+		if manageUser && action == DBActionSkip {
+			delete(desired, KeyAppDBPassword)
+			addNote("skip：DB_PASSWORD 未写入 .env（凭据未验证；容器栈请自行提供）")
+		} else if dbCredsVerified {
+			overwrite[KeyAppDBPassword] = true
+		}
+		added, kept, drifted, overwritten, merr := MergeEnvFile(envAbs, desired, overwrite)
 		if merr != nil {
 			setStep(StepEnvFile, StepFailed, merr.Error())
 			e.finish(run)
@@ -529,9 +579,14 @@ func (e *Engine) execute(ctx context.Context, run *Run, in *Inputs) {
 		}
 		detail := fmt.Sprintf("%s：补齐 %d 个变量，保留 %d 个已有值", envAbs, len(added), len(kept))
 		status := StepOK
-		if len(added) == 0 {
+		if len(added) == 0 && len(overwritten) == 0 {
 			status = StepSkipped
 			detail = fmt.Sprintf("%s：变量已齐，无需改动", envAbs)
+		}
+		if len(overwritten) > 0 {
+			status = StepWarn
+			detail += "；更新陈旧值：" + strings.Join(overwritten, ", ") +
+				"（.env 原值与真实账号口令不一致，已更新为本次验证通过的凭据）"
 		}
 		if len(drifted) > 0 {
 			status = StepWarn
@@ -594,6 +649,10 @@ func (e *Engine) execute(ctx context.Context, run *Run, in *Inputs) {
 			detail = "未给出任何裸金属渲染输出路径，本步骤跳过"
 		}
 		setStep(StepRender, status, detail)
+		if (action == DBActionTakeover || action == DBActionReuse) && len(skipped) > 0 {
+			addNote("注意：takeover/reuse 改变了生效的 DB 凭据，以下已存在的配置文件保留原值（绝不覆盖），请人工核对其中 DB 口令：" +
+				strings.Join(skipped, "；"))
+		}
 	} else {
 		setStep(StepRender, StepSkipped, "未选择裸金属路径，跳过配置渲染")
 	}
@@ -791,15 +850,29 @@ func policyLabel(policy string) string {
 	return policy
 }
 
-// planAppUser 在计划中报应用账号的探测结论与处置结局。返回 true 表示
-// databases 步整体将被跳过或冲突未决（此时不再报逐库细节）。
-func (e *Engine) planAppUser(rep *PlanReport, ctx context.Context, in *Inputs, db *sql.DB, st *State) bool {
+// dbResolution 是计划对 databases 步的结论（驱动 .env 预览：skip 时
+// DB_PASSWORD 不落盘，接管/沿用时预告陈旧值更新）。
+type dbResolution string
+
+const (
+	dbResUnknown  dbResolution = ""         // 管理口不可达/推迟/不管账号：无法断言
+	dbResProceed  dbResolution = "proceed"  // 无冲突：凭据将被验证
+	dbResTakeover dbResolution = "takeover" // 冲突已决：口令将改为本次凭据
+	dbResReuse    dbResolution = "reuse"    // 冲突已决：将沿用既有口令
+	dbResSkip     dbResolution = "skip"     // 冲突 + skip：整步保留现状
+	dbResBlocked  dbResolution = "blocked"  // 冲突未决：运行会被拒绝
+)
+
+// planAppUser 在计划中报应用账号的探测结论与处置结局。返回 (suppress,
+// resolution)：suppress=true 表示 databases 步整体将被跳过或冲突未决
+// （此时不再报逐库细节）。
+func (e *Engine) planAppUser(rep *PlanReport, ctx context.Context, in *Inputs, db *sql.DB, st *State) (bool, dbResolution) {
 	user := in.Database.AppUser
 	uexists, err := userExists(ctx, db, user)
 	if err != nil {
 		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
 			Target: user, Detail: err.Error()})
-		return false
+		return false, dbResUnknown
 	}
 	if !uexists {
 		detail := "将创建应用账号并授权四个库（口令为生成值）"
@@ -808,7 +881,7 @@ func (e *Engine) planAppUser(rep *PlanReport, ctx context.Context, in *Inputs, d
 		}
 		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "execute",
 			Target: user, Detail: detail})
-		return false
+		return false, dbResProceed
 	}
 	// 账号已在：以状态中的凭据为候选探测匹配性（无状态值 = 将生成，必冲突）。
 	candidate := st.Secrets[KeyAppDBPassword]
@@ -817,12 +890,12 @@ func (e *Engine) planAppUser(rep *PlanReport, ctx context.Context, in *Inputs, d
 		if cerr != nil {
 			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
 				Target: user, Detail: "探测既有账号口令匹配性失败：" + cerr.Error()})
-			return true
+			return true, dbResUnknown
 		}
 		if ok {
 			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "skip-exists",
 				Target: user, Detail: "应用账号已存在且本状态凭据验证通过：幂等无操作（仅补齐 GRANT）"})
-			return false
+			return false, dbResProceed
 		}
 	}
 	detail := "应用账号已存在且口令与本次凭据不一致"
@@ -833,35 +906,36 @@ func (e *Engine) planAppUser(rep *PlanReport, ctx context.Context, in *Inputs, d
 	case PolicyTakeover:
 		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "execute",
 			Target: user, Detail: detail + "；处置 takeover：将把账号口令改为本次凭据，补齐授权并逐库验证连通"})
+		return false, dbResTakeover
 	case PolicyReuse:
 		if strings.TrimSpace(in.Database.ExistingPassword) == "" {
 			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
 				Target: user, Detail: detail + "；处置 reuse 需提供 existing_password（既有账号当前口令）"})
-			return true
+			return true, dbResBlocked
 		}
 		ok, cerr := CheckAppPassword(ctx, in, in.Database.ExistingPassword)
 		if cerr != nil {
 			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
 				Target: user, Detail: "验证提供的 existing_password 失败：" + cerr.Error()})
-			return true
+			return true, dbResBlocked
 		}
 		if !ok {
 			rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
 				Target: user, Detail: detail + "；提供的 existing_password 与既有账号不匹配，请核对口令"})
-			return true
+			return true, dbResBlocked
 		}
 		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "reuse",
 			Target: user, Detail: detail + "；处置 reuse：existing_password 验证通过，将沿用并收编进状态（不改口令）"})
+		return false, dbResReuse
 	case PolicySkip:
 		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "skip-exists",
 			Target: "(整步)", Detail: detail + "；处置 skip：databases 步整体保留现状（不建库、不改账号），只补其余步骤"})
-		return true
+		return true, dbResSkip
 	default:
 		rep.Items = append(rep.Items, PlanItem{Step: StepDatabases, Action: "blocker",
 			Target: user, Detail: detail + "；须选择处置后继续：takeover（改口令到本次凭据）/ reuse（沿用既有口令）/ skip（保留本步现状）"})
-		return true
+		return true, dbResBlocked
 	}
-	return false
 }
 
 // ErrRunInProgress 表示已有运行中的初始化任务（单飞）。

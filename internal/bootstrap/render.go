@@ -199,8 +199,13 @@ func redisEndpoint(in *Inputs, facts *InfraFacts, container bool) (string, strin
 //   - 已存在的键一律保留原值（绝不覆盖）；与期望值不一致记为漂移告警；
 //   - 缺失的键按稳定顺序追加在文件尾部（带来源注释）。
 //
-// 返回 (新增键, 保留键, 漂移键, 错误)。文件不存在时整体创建。
-func MergeEnvFile(path string, desired map[string]string) (added, kept, drifted []string, err error) {
+// 返回 (新增键, 保留键, 漂移键, 覆写键, 错误)。文件不存在时整体创建。
+//
+// overwrite 是"已有值不覆盖"铁律的唯一例外通道：仅限本次运行被显式验证
+// 过的凭据键（databases 步 takeover/reuse/验证通过的处置）。这类键的既有
+// 值若与验证值不同，可证明是陈旧值（服务用它连不上真实账号），就地更新
+// 并如实报告；绝不做静默覆写。
+func MergeEnvFile(path string, desired map[string]string, overwrite map[string]bool) (added, kept, drifted, overwritten []string, err error) {
 	existing := map[string]string{}
 	var rawLines []string
 
@@ -217,7 +222,7 @@ func MergeEnvFile(path string, desired map[string]string) (added, kept, drifted 
 			}
 		}
 	} else if !os.IsNotExist(rerr) {
-		return nil, nil, nil, fmt.Errorf("read %s: %w", path, rerr)
+		return nil, nil, nil, nil, fmt.Errorf("read %s: %w", path, rerr)
 	}
 
 	keys := make([]string, 0, len(desired))
@@ -228,6 +233,16 @@ func MergeEnvFile(path string, desired map[string]string) (added, kept, drifted 
 
 	for _, k := range keys {
 		if cur, ok := existing[k]; ok {
+			if overwrite[k] && cur != desired[k] {
+				overwritten = append(overwritten, k)
+				for i, line := range rawLines {
+					lk, _, lok := parseEnvLine(strings.TrimSpace(line))
+					if lok && lk == k {
+						rawLines[i] = fmt.Sprintf("%s=%s", k, desired[k])
+					}
+				}
+				continue
+			}
 			kept = append(kept, k)
 			if cur != desired[k] {
 				drifted = append(drifted, k)
@@ -238,22 +253,24 @@ func MergeEnvFile(path string, desired map[string]string) (added, kept, drifted 
 		rawLines = append(rawLines, fmt.Sprintf("%s=%s", k, desired[k]))
 	}
 
-	if len(added) == 0 {
-		return added, kept, drifted, nil
+	if len(added) == 0 && len(overwritten) == 0 {
+		return added, kept, drifted, overwritten, nil
 	}
 	content := strings.TrimRight(strings.Join(rawLines, "\n"), "\n")
-	header := "\n# ---- 以下变量由 HA-Cupbearer 首次运行初始化补齐（幂等；已有值不覆盖） ----"
-	content = content + header + "\n"
-	for _, k := range added {
-		content += fmt.Sprintf("%s=%s\n", k, desired[k])
+	if len(added) > 0 {
+		header := "\n# ---- 以下变量由 HA-Cupbearer 首次运行初始化补齐（幂等；已有值不覆盖） ----"
+		content = content + header + "\n"
+		for _, k := range added {
+			content += fmt.Sprintf("%s=%s\n", k, desired[k])
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		return nil, nil, nil, fmt.Errorf("write %s: %w", path, err)
+		return nil, nil, nil, nil, fmt.Errorf("write %s: %w", path, err)
 	}
-	return added, kept, drifted, nil
+	return added, kept, drifted, overwritten, nil
 }
 
 func parseEnvLine(line string) (key, value string, ok bool) {

@@ -132,7 +132,7 @@ func TestMergeEnvFileKeepsAndFills(t *testing.T) {
 		"MANAGE_TOKEN": "generated-value",
 		"DB_USER":      "hrpa",
 	}
-	added, kept, drifted, err := MergeEnvFile(envPath, desired)
+	added, kept, drifted, overwritten, err := MergeEnvFile(envPath, desired, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,6 +145,9 @@ func TestMergeEnvFileKeepsAndFills(t *testing.T) {
 	if len(drifted) != 1 || drifted[0] != "MANAGE_TOKEN" {
 		t.Fatalf("drifted=%v", drifted)
 	}
+	if len(overwritten) != 0 {
+		t.Fatalf("overwritten=%v", overwritten)
+	}
 	data, _ := os.ReadFile(envPath)
 	if !strings.Contains(string(data), "MANAGE_TOKEN=keep-me") {
 		t.Fatal("existing value must be preserved (never overwritten)")
@@ -154,12 +157,59 @@ func TestMergeEnvFileKeepsAndFills(t *testing.T) {
 	}
 
 	// 第二次合并：无新增（幂等）。
-	added2, _, _, err := MergeEnvFile(envPath, desired)
+	added2, _, _, overwritten2, err := MergeEnvFile(envPath, desired, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(added2) != 0 {
-		t.Fatalf("second merge must add nothing, added=%v", added2)
+	if len(added2) != 0 || len(overwritten2) != 0 {
+		t.Fatalf("second merge must change nothing, added=%v overwritten=%v", added2, overwritten2)
+	}
+}
+
+// 覆写通道：仅限显式验证过的凭据键；其余键仍受"绝不覆盖"保护。
+func TestMergeEnvFileOverwriteVerifiedOnly(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+	if err := os.WriteFile(envPath, []byte("DB_PASSWORD=stale-value\nMANAGE_TOKEN=keep-me\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	desired := map[string]string{
+		"DB_PASSWORD":  "verified-value",
+		"MANAGE_TOKEN": "generated-value",
+	}
+	added, kept, drifted, overwritten, err := MergeEnvFile(envPath, desired, map[string]bool{"DB_PASSWORD": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(added) != 0 {
+		t.Fatalf("added=%v", added)
+	}
+	if len(overwritten) != 1 || overwritten[0] != "DB_PASSWORD" {
+		t.Fatalf("overwritten=%v", overwritten)
+	}
+	if len(kept) != 1 || kept[0] != "MANAGE_TOKEN" {
+		t.Fatalf("kept=%v", kept)
+	}
+	if len(drifted) != 1 || drifted[0] != "MANAGE_TOKEN" {
+		t.Fatalf("drifted=%v (MANAGE_TOKEN 不在覆写集合，必须只漂移不覆盖)", drifted)
+	}
+	data, _ := os.ReadFile(envPath)
+	if !strings.Contains(string(data), "DB_PASSWORD=verified-value") {
+		t.Fatal("verified credential must replace the stale value in place")
+	}
+	if strings.Contains(string(data), "stale-value") {
+		t.Fatal("stale value must be gone")
+	}
+	if !strings.Contains(string(data), "MANAGE_TOKEN=keep-me") {
+		t.Fatal("non-overwrite key must be preserved")
+	}
+	// 再次合并：已一致，无覆写（幂等）。
+	_, _, _, overwritten2, err := MergeEnvFile(envPath, desired, map[string]bool{"DB_PASSWORD": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(overwritten2) != 0 {
+		t.Fatalf("idempotent re-merge must overwrite nothing, got %v", overwritten2)
 	}
 }
 
