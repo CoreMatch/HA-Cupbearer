@@ -91,6 +91,23 @@ func (e *Engine) ProbeInfra(ctx context.Context, in *Inputs) *InfraFacts {
 	return facts
 }
 
+// CredentialHints 计算凭据预填提示（契约 1.7.0；只读，唯一写面是审计日志）：
+// 对 MySQL 管理口 / 应用账号 / Redis 三个目标，按三类可追溯来源收集候选，
+// 逐个对目标验证，仅第一个验证通过者回显明文并记审计。外部口令绝不回显。
+// remoteAddr 是调用方地址（审计"谁取用"）。
+func (e *Engine) CredentialHints(ctx context.Context, in *Inputs, remoteAddr string) (*CredentialHintsReport, error) {
+	in.fillDefaults()
+	var hd HintDocker
+	if e.dk != nil {
+		hd, _ = e.dk.(HintDocker)
+	}
+	collector := NewHintCollector(e.store, hd, in.Paths.EnvFile)
+	// 基础设施现状（只读探测）只用于无预填值时的情境化文案。
+	mysqlMode := probeInfraOne(ctx, "mysql", in.Infra.MySQLHostPort, e.dk).Mode
+	redisMode := probeInfraOne(ctx, "redis", in.Infra.RedisHostPort, e.dk).Mode
+	return collector.Collect(ctx, in, mysqlMode, redisMode, remoteAddr), nil
+}
+
 func probeInfraOne(ctx context.Context, kind string, hostPort int, dk InfraDocker) InfraInstance {
 	container := MySQLContainerName
 	composeAddr := MySQLComposeAddress

@@ -10,7 +10,7 @@
 //     运行记录里只出现掩码或指纹，绝不出现明文；
 //   - 断点续跑：每一步幂等 + 逐项落运行记录，重跑即续跑。
 //
-// 契约：HA-Contract docs/api/openapi/ha-cupbearer.yaml v1.6.0
+// 契约：HA-Contract docs/api/openapi/ha-cupbearer.yaml v1.7.0
 // （/api/v1/deploy/bootstrap/*）。
 package bootstrap
 

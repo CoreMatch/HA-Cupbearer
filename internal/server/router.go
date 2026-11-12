@@ -64,6 +64,7 @@ func NewRouter(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken 
 			bootstrapGroup.GET("/infra", handler.GetBootstrapInfra)
 			bootstrapGroup.POST("/infra/mysql", handler.bootstrapAuth, handler.PostBootstrapInfraMySQL)
 			bootstrapGroup.POST("/infra/redis", handler.bootstrapAuth, handler.PostBootstrapInfraRedis)
+			bootstrapGroup.POST("/credential-hints", handler.bootstrapAuth, handler.PostBootstrapCredentialHints)
 			bootstrapGroup.POST("/plan", handler.bootstrapAuth, handler.PostBootstrapPlan)
 			bootstrapGroup.POST("/run", handler.bootstrapAuth, handler.PostBootstrapRun)
 			bootstrapGroup.GET("/runs", handler.GetBootstrapRuns)

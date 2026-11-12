@@ -359,6 +359,59 @@ type ManagedContainer struct {
 	Project string
 }
 
+// ComposeContainerRef 是一个在跑的 compose 容器的最小标识（凭据预填的
+// 历史发现用：compose working_dir 标签指向本工具历史实例的落点）。
+type ComposeContainerRef struct {
+	Name       string
+	Project    string
+	WorkingDir string
+}
+
+// ListComposeContainers 列出带 compose 项目标签的在跑容器
+// （名字、项目名、compose 工作目录）。
+func (c *CLI) ListComposeContainers(ctx context.Context) ([]ComposeContainerRef, error) {
+	out, err := c.run(ctx, "ps", "--filter", "label=com.docker.compose.project",
+		"--format", "{{.Names}}\t{{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.project.working_dir\"}}")
+	if err != nil {
+		return nil, err
+	}
+	var list []ComposeContainerRef
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		ref := ComposeContainerRef{Name: parts[0]}
+		if len(parts) > 1 {
+			ref.Project = parts[1]
+		}
+		if len(parts) > 2 {
+			ref.WorkingDir = parts[2]
+		}
+		list = append(list, ref)
+	}
+	return list, nil
+}
+
+// ContainerEnv 读取容器配置的环境变量（KEY=VALUE）。只读，绝不改动容器；
+// 供凭据预填层从受管容器环境找回本工具生成的凭据（仅验证通过者回显）。
+func (c *CLI) ContainerEnv(ctx context.Context, name string) (map[string]string, error) {
+	out, err := c.run(ctx, "container", "inspect", "--format",
+		"{{range .Config.Env}}{{println .}}{{end}}", name)
+	if err != nil {
+		return nil, err
+	}
+	env := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		key, val, ok := strings.Cut(line, "=")
+		if !ok || key == "" {
+			continue
+		}
+		env[key] = val
+	}
+	return env, nil
+}
+
 func (c *CLI) ListManaged(ctx context.Context) ([]ManagedContainer, error) {
 	out, err := c.run(ctx, "ps", "-a", "--filter", "label="+LabelManagedBy,
 		"--format", "{{.Names}}|{{.Label \""+LabelProject+"\"}}")

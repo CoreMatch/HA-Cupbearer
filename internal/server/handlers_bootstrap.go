@@ -14,12 +14,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 首次运行初始化端点（契约：ha-cupbearer.yaml v1.6.0
+// 首次运行初始化端点（契约：ha-cupbearer.yaml v1.7.0
 // /api/v1/deploy/bootstrap/*）。设计边界：
 //   - 初始化层独立于 orchestration.enabled——全新机器上编排尚未启用时
 //     同样可用；变更面（plan/run）仍强制 X-Deploy-Token（fail-closed）；
 //   - 只读面（status/runs）与既有只读端点一致不加鉴权；响应里任何机密值
-//     只以指纹出现，绝不回显明文；
+//     只以指纹出现，绝不回显明文。唯一例外是 credential-hints（契约 1.7.0）：
+//     它经 X-Deploy-Token 鉴权，仅回显"本工具生成且可追溯、且对目标验证通过"
+//     的凭据明文，且每次回显记审计日志；
 //   - plan = dry-run，绝不落盘；run = 异步执行，逐项落运行记录，重跑即续跑。
 
 // MVStatusSource 提供 MaintenanceView 监督状态（由 mvmanager 实现；
@@ -335,6 +337,33 @@ func (h *Handler) GetBootstrapInfra(c *gin.Context) {
 		"success": true,
 		"message": "infra status",
 		"data":    facts,
+	})
+}
+
+// PostBootstrapCredentialHints 计算凭据预填提示（契约 1.7.0）：只读，
+// 仅回显"本工具生成且可追溯、且对目标账号验证通过"的明文，每次回显
+// 记审计日志；外部口令一律不预填不回显。鉴权走 bootstrapAuth（fail-closed）。
+func (h *Handler) PostBootstrapCredentialHints(c *gin.Context) {
+	if h.bootstrapUnavailable(c) {
+		return
+	}
+	var in bootstrap.Inputs
+	// 部分输入即可：只消费 database/redis 的目标定位字段，缺省取默认。
+	_ = c.ShouldBindJSON(&in)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+	defer cancel()
+	rep, err := h.boot.CredentialHints(ctx, &in, c.Request.RemoteAddr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "credential hints computed (read-only)",
+		"data":    rep,
 	})
 }
 

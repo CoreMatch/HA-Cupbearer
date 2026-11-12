@@ -20,7 +20,7 @@ selected deployment path.
 ### Bootstrap layer (`internal/bootstrap/`)
 
 Independent of `orchestration.enabled`; available whenever the Cupbearer runs.
-Contract: HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.6.0
+Contract: HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.7.0
 (`/api/v1/deploy/bootstrap/*`). Steps, in order:
 
 1. **infra** — MySQL/Redis, standing per selected deployment path
@@ -100,6 +100,47 @@ run records, and logs. `plan` = dry-run (writes nothing); `run` = async apply
 itself is auto-generated into the credentials file on first start when absent
 (fingerprint logged, plaintext never).
 
+### Credential prefill hints (contract 1.7.0)
+
+Adopting/reusing a pre-existing instance used to leave the wizard's password
+fields blank even when the machine itself held the credentials. Since
+contract 1.7.0 `POST /api/v1/deploy/bootstrap/credential-hints`
+(`internal/bootstrap/hints.go::HintCollector`, deploy-token gated,
+read-only) prefills them — but only with values this tool generated and can
+still trace. Three source classes, consulted in order:
+
+1. **managed container env** (`source=managed_container_env`) — env of the
+   managed infra containers (`ha-infra-mysql-1` `MYSQL_ROOT_PASSWORD`,
+   `ha-infra-redis-1` `REDIS_PASSWORD`) and of compose-managed platform
+   service containers whose declared `DB_USER` matches the target app
+   account (their `DB_PASSWORD`);
+2. **this instance** (`source=bootstrap_state` / `env_file`) — the bootstrap
+   state file, and the `.env` this instance writes — for the latter only
+   keys demonstrably appended by this tool qualify (after the
+   `MergeEnvFile` provenance marker; keys before it are external and never
+   echoed);
+3. **historical artifacts** (`source=historical`) — other on-machine
+   artifacts of earlier instances of this tool: `.env` files carrying the
+   tool's provenance marker and bootstrap state copies, discovered under a
+   bounded root set only — the explicit `HACB_BOOTSTRAP_SCAN_ROOTS` list
+   plus compose working directories of running containers (compose labels
+   name them; never a filesystem walk). The provenance names the directory
+   and, for state copies, the initialization time.
+
+Every candidate is verified against the target account before its plaintext
+is echoed (`CheckAppPassword` for the app account, a `SELECT 1` login for
+the MySQL admin account, `AUTH+PING` for Redis); candidates failing
+verification are discarded (counted, never returned). External passwords —
+anything not generated/adopted by this tool or unverifiable — are never
+prefilled and never echoed. Every plaintext echo is audit-logged
+(`data/bootstrap/credential-audit.log`, 0600: caller address, target,
+source, provenance, value fingerprint, timestamp — no plaintext in the
+record). When nothing traceable is found the hint carries contextual copy
+instead of an empty box: managed-but-unreadable vs external-instance.
+`database.existing_password` semantics are unchanged (still the
+operator-provided input for `policy: reuse`); the hints are additive
+read-only fields with a `source` enum.
+
 ### MaintenanceView autostart (`internal/mvmanager/`)
 
 The Cupbearer supervises exactly one MV instance so operators never deploy it
@@ -162,10 +203,14 @@ policy's effect; the run panel shows what happened.
 - `internal/bootstrap/render.go::MergeEnvFile`, `::EnvForBaremetal` — merge
   (with the verified-credential overwrite channel) and dual-form address
   derivation.
+- `internal/bootstrap/hints.go::HintCollector`, `::Collect` — credential
+  prefill: three traceable source classes, verify-before-echo, audit log.
+- `internal/docker/docker.go::ContainerEnv`, `::ListComposeContainers` —
+  read-only container env recovery and compose working-dir discovery.
 - `internal/mvmanager/manager.go::Start` — reuse-or-manage decision.
 - `internal/server/handlers_bootstrap.go` — endpoint surface.
 - `deploy/infra.yml` — infra compose (wipe procedure in header comment).
-- HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.6.0.
+- HA-Contract `docs/api/openapi/ha-cupbearer.yaml` v1.7.0.
 - E2E transcript: fresh-machine run records under `data/bootstrap/runs/`
   (ids 20261112-0124xx … 20261112-0134xx, including the killed `running`
   record and its successful resume). Conflict E2E (2026-11-12, ephemeral
