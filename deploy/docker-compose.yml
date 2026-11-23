@@ -38,7 +38,7 @@ x-common-logging: &common-logging
 
 services:
   hrpauth:
-    image: limeight/ha-hrpauth@sha256:7aeb4bacb81ef45098ae167d47d7868eae67e36a0086e8bfed7e19a4bfa45288
+    image: limeight/ha-hrpauth@sha256:c2bfab07b7e57dbf0d878a317029b3c789305529fc8feeced588d300dcef659a
     restart: unless-stopped
     ports:
       - "${HRPAUTH_PORT:-2778}:2778"
@@ -100,7 +100,7 @@ services:
     logging: *common-logging
 
   hrpauth-yggdrasil-api:
-    image: limeight/ha-hrpauth-yggdrasil-api@sha256:9c78eddf66dd493aa2cdd77193ba52e5e85fcb378edeec45d0425e5a551c2f59
+    image: limeight/ha-hrpauth-yggdrasil-api@sha256:c9e880dd023db4220874638bfde7cad5ae62edb320444b075e88898347058e6e
     restart: unless-stopped
     ports:
       - "${YGG_PORT:-2770}:2770"
@@ -140,7 +140,7 @@ services:
     logging: *common-logging
 
   haskinlib:
-    image: limeight/ha-haskinlib@sha256:56350ff11f45f183f147c60ab147305856f13142c648a9960388670d287c7f40
+    image: limeight/ha-haskinlib@sha256:9e121bf266c5698af5dac2ed88ac00859f043c68c60bfa07321b9747f2e14d15
     restart: unless-stopped
     ports:
       - "${HASKINLIB_PORT:-2701}:2701"
@@ -172,7 +172,7 @@ services:
     logging: *common-logging
 
   haskinproxy:
-    image: limeight/ha-haskinproxy@sha256:c086ffaf549c34482fa70a5b90067e39df0f92fd872610ffe60ae5419685a6b2
+    image: limeight/ha-haskinproxy@sha256:cc602d6e90c2b0400574ab58208887110c272b3fdc43dc57678a30b969dae06a
     restart: unless-stopped
     ports:
       - "${HASKINPROXY_PORT:-2702}:2702"
@@ -208,7 +208,7 @@ services:
     logging: *common-logging
 
   winnerproxy:
-    image: limeight/ha-winnerproxy@sha256:51795ffad54b8bb90e36470ae857f0414c26eb64185e7562aa999eecbda0b7bc
+    image: limeight/ha-winnerproxy@sha256:1ec004a4f53561f120a26ab42810c7c00f35842633adcf7bbb4e6b1b82a6dd06
     restart: unless-stopped
     ports:
       - "${WINNERPROXY_PORT:-2777}:2777"
@@ -297,7 +297,7 @@ services:
     logging: *common-logging
 
   ha-webui-sdkhandler:
-    image: limeight/ha-webui-sdkhandler@sha256:bd4137705d8e62a3718ecd24db6f444880cf9a5973f1cfa62b27484cab5d7f8f
+    image: limeight/ha-webui-sdkhandler@sha256:5a31850590442f5ec7659fa088a7030072bf2cd39e49d89d811805009e055bce
     restart: unless-stopped
     ports:
       # 内部构建服务：默认仅绑定回环，服务间调用走 compose 网络，无需宿主暴露。
