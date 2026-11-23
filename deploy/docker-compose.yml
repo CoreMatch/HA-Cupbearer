@@ -100,7 +100,7 @@ services:
     logging: *common-logging
 
   hrpauth-yggdrasil-api:
-    image: limeight/ha-hrpauth-yggdrasil-api@sha256:c9e880dd023db4220874638bfde7cad5ae62edb320444b075e88898347058e6e
+    image: limeight/ha-hrpauth-yggdrasil-api@sha256:fe1b123c3178d3a0be16c06ac43fb5dc0a24abddd11d0087a14c77b7722ec521
     restart: unless-stopped
     ports:
       - "${YGG_PORT:-2770}:2770"
