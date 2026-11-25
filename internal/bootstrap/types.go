@@ -1,5 +1,5 @@
 // Package bootstrap 是 Cupbearer 的首次运行初始化层：把一台全新机器变成
-// 可运行的 HA 平台，不需要人手工敲 openssl、手工建库、手工拼 .env。
+// 可运行的 Armorial 平台，不需要人手工敲 openssl、手工建库、手工拼 .env。
 //
 // 设计边界（与编排本体的关系）：
 //   - 编排本体（版本目录+软链、Tinyvisor 重启、健康判定、一键触发）不动；
@@ -338,7 +338,7 @@ func (in *Inputs) Validate() []FieldError {
 		}
 		u, err := url.Parse(val)
 		if err != nil || u.Scheme == "" || u.Host == "" {
-			add(field, fmt.Sprintf("%q 不是合法 URL：必须带协议与主机，例如 https://ha.example.com", val))
+			add(field, fmt.Sprintf("%q 不是合法 URL：必须带协议与主机，例如 https://armorial.example.com", val))
 		}
 	}
 	checkURL("public_urls.hrpauth", in.PublicURLs.HRPAuth, true)

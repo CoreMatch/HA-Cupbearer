@@ -1,12 +1,12 @@
 <div align="center">
-  <h1>HA-Cupbearer</h1>
+  <h1>Armorial Cupbearer</h1>
   <p><strong>从暂存到健康检查，发布过程可控。</strong></p>
   <p><a href="./README.md">English</a></p>
 </div>
 
-HA-Cupbearer 通过以裸金属为先的控制路径交付和部署 HA 服务。它整合产物暂存、软链激活、健康与冒烟检查、回滚，以及由它监督运行的 MaintenanceView 运维界面。
+Armorial Cupbearer 通过以裸金属为先的控制路径交付和部署 Armorial 服务。它整合产物暂存、软链激活、健康与冒烟检查、回滚，以及由它监督运行的 MaintenanceView 运维界面。
 
-## 为什么选择 HA-Cupbearer
+## 为什么选择 Armorial Cupbearer
 
 - **校验和暂存。** 基于校验和的暂存路径在激活前准备产物文件。
 - **激活并验证。** 软链切换后执行健康检查和可选冒烟检查，裸金属变更失败时可回滚。
@@ -16,9 +16,9 @@ HA-Cupbearer 通过以裸金属为先的控制路径交付和部署 HA 服务。
 
 ## 进一步了解
 
-- [Docker Hub 上的 HA-Cupbearer](https://hub.docker.com/r/limeight/ha-cupbearer) — 已发布容器镜像
-- [GitHub 上的 HA-Cupbearer](https://github.com/CoreMatch/HA-Cupbearer) — 规范源码仓库
-- [Cupbearer API 契约](https://github.com/CoreMatch/HA-Contract/blob/main/docs/api/openapi/ha-cupbearer.yaml) — 版本化交付接口
+- [Docker Hub 上的 Armorial Cupbearer](https://hub.docker.com/r/limeight/ha-cupbearer) — 已发布容器镜像
+- [GitHub 上的 Armorial Cupbearer](https://github.com/CoreMatch/HA-Cupbearer) — 规范源码仓库
+- [Armorial Cupbearer API 契约](https://github.com/CoreMatch/HA-Contract/blob/main/docs/api/openapi/ha-cupbearer.yaml) — 版本化交付接口
 - [MaintenanceView](https://github.com/CoreMatch/HA-Services-MaintenanceView) — 运维控制台
 
 ## 边界

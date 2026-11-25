@@ -244,7 +244,7 @@ func (m *Manager) writeMVConfig(listen string) error {
 	}
 	dist := m.findFrontendDist()
 	var sb strings.Builder
-	sb.WriteString("# 由 HA-Cupbearer 自动生成——勿手工编辑。\n")
+	sb.WriteString("# 由 Armorial Cupbearer 自动生成——勿手工编辑。\n")
 	sb.WriteString("# Cupbearer 自启 MV 形态：配置自动推导，凭据由 MV 服务端持有并转发。\n")
 	sb.WriteString("version: \"1\"\n")
 	sb.WriteString("server:\n")

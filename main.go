@@ -79,7 +79,7 @@ func main() {
 	defer mv.Stop()
 
 	router := server.NewRouter(cfg, orch, creds.DeployToken, boot, mvAdapter{mv})
-	log.Printf("HA Cupbearer listening on %s", cfg.Server.Listen)
+	log.Printf("Armorial Cupbearer listening on %s", cfg.Server.Listen)
 
 	// 优雅退出：信号到达时先停 HTTP 面，再经 defer 停受管的 MV。
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -94,7 +94,7 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
-	log.Printf("HA Cupbearer stopped")
+	log.Printf("Armorial Cupbearer stopped")
 }
 
 // cupbearerSelfURL 推导 MV 回连本服务的地址（listen 的端口 + 回环主机）。

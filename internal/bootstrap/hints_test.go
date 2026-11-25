@@ -170,6 +170,25 @@ func TestHintCollectorOwnEnvFileAppendedKey(t *testing.T) {
 	}
 }
 
+// 旧品牌来源标记仍可追溯，升级不能丢掉既有凭据预填。
+func TestHintCollectorLegacyEnvMarker(t *testing.T) {
+	envPath := filepath.Join(t.TempDir(), ".env")
+	content := "# ---- 以下变量" + legacyEnvFileMarker + "（幂等；已有值不覆盖） ----\n" +
+		"MYSQL_ROOT_PASSWORD=legacy-tool-written\n"
+	if err := os.WriteFile(envPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := NewHintCollector(NewStore(t.TempDir()), nil, envPath)
+	c.verifyAdminOverride = func(_ context.Context, pw string) bool { return pw == "legacy-tool-written" }
+	c.verifyAppOverride = func(context.Context, string) bool { return false }
+	c.verifyRedisOverride = func(context.Context, string) bool { return false }
+
+	rep := c.Collect(context.Background(), hintTestInputs(t), "", "", "")
+	if hint := rep.Hints[0]; !hint.Found || hint.Source != SourceEnvFile || hint.Value != "legacy-tool-written" {
+		t.Fatalf("legacy env marker hint wrong: %+v", hint)
+	}
+}
+
 // ③类来源：历史实例的 state 副本与 .env——报出"来自哪个目录/哪次初始化"。
 func TestHintCollectorHistoricalSources(t *testing.T) {
 	// 历史实例根：root/data/bootstrap/state.json + root/.env（带标记）。

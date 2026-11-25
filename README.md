@@ -1,12 +1,12 @@
 <div align="center">
-  <h1>HA-Cupbearer</h1>
+  <h1>Armorial Cupbearer</h1>
   <p><strong>Controlled releases, from staging to health.</strong></p>
   <p><a href="./README.zh-CN.md">简体中文</a></p>
 </div>
 
-HA-Cupbearer delivers and deploys HA services through a bare-metal-first control path. It combines artifact staging, symlink activation, health and smoke checks, rollback, and a supervised MaintenanceView for operators.
+Armorial Cupbearer delivers and deploys Armorial services through a bare-metal-first control path. It combines artifact staging, symlink activation, health and smoke checks, rollback, and a supervised MaintenanceView for operators.
 
-## Why HA-Cupbearer
+## Why Armorial Cupbearer
 
 - **Stage with checksums.** A checksum-based staging path prepares artifact files before activation.
 - **Activate and verify.** Symlink switching is followed by health and optional smoke checks, with rollback for failed bare-metal changes.
@@ -16,9 +16,9 @@ HA-Cupbearer delivers and deploys HA services through a bare-metal-first control
 
 ## Learn more
 
-- [HA-Cupbearer on Docker Hub](https://hub.docker.com/r/limeight/ha-cupbearer) — published container image
-- [HA-Cupbearer on GitHub](https://github.com/CoreMatch/HA-Cupbearer) — canonical source repository
-- [Cupbearer API contract](https://github.com/CoreMatch/HA-Contract/blob/main/docs/api/openapi/ha-cupbearer.yaml) — versioned delivery surface
+- [Armorial Cupbearer on Docker Hub](https://hub.docker.com/r/limeight/ha-cupbearer) — published container image
+- [Armorial Cupbearer on GitHub](https://github.com/CoreMatch/HA-Cupbearer) — canonical source repository
+- [Armorial Cupbearer API contract](https://github.com/CoreMatch/HA-Contract/blob/main/docs/api/openapi/ha-cupbearer.yaml) — versioned delivery surface
 - [MaintenanceView](https://github.com/CoreMatch/HA-Services-MaintenanceView) — operator console
 
 ## Boundary

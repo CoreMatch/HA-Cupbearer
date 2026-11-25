@@ -14,7 +14,7 @@ import (
 // 配置供给的单一事实源：全部变量由 Inputs + 生成的机密值推导，
 // 容器路径经 .env 注入（模板仍由容器 entrypoint 渲染——既有设计不变），
 // 裸金属路径由本层直接渲染 deploy/config/*.tmpl（此前 Go 代码零引用，
-// 自本层起真正被消费）。同一份字典喂两侧，"同一对凭据同时落到 HRPAuth
+// 自本层起真正被消费）。同一份字典喂两侧，"同一对凭据同时落到 Armorial
 // service_clients 与消费方配置"由构造保证，不存在只写一半。
 
 // TemplateServices 是模板文件 → 服务名映射（渲染输出按服务名索引）。
@@ -262,7 +262,7 @@ func MergeEnvFile(path string, desired map[string]string, overwrite map[string]b
 	}
 	content := strings.TrimRight(strings.Join(rawLines, "\n"), "\n")
 	if len(added) > 0 {
-		header := "\n# ---- 以下变量由 HA-Cupbearer 首次运行初始化补齐（幂等；已有值不覆盖） ----"
+		header := "\n# ---- 以下变量" + envFileMarker + "（幂等；已有值不覆盖） ----"
 		content = content + header + "\n"
 		for _, k := range added {
 			content += fmt.Sprintf("%s=%s\n", k, desired[k])

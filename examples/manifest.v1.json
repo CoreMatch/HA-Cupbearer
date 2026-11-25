@@ -4,7 +4,7 @@
   "services": [
     {
       "name": "hrpauth",
-      "display_name": "HRPAuth",
+      "display_name": "Armorial",
       "channel": "stable",
       "version": "1.0.0",
       "published_at": "2026-10-17T05:45:00Z",
@@ -23,7 +23,7 @@
     },
     {
       "name": "hrpauth-yggdrasil-api",
-      "display_name": "HAygg",
+      "display_name": "Armorial Yggdrasil API",
       "channel": "stable",
       "version": "1.0.0",
       "published_at": "2026-10-17T05:45:00Z",
@@ -42,7 +42,7 @@
     },
     {
       "name": "haskinproxy",
-      "display_name": "HASkinProxy",
+      "display_name": "Armorial SkinProxy",
       "channel": "stable",
       "version": "1.0.0",
       "published_at": "2026-10-17T05:45:00Z",

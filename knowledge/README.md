@@ -6,11 +6,11 @@ This directory is **the project's own notebook** — ADR-style records kept for
 self-hosting and maintenance of this service.
 
 - It does **not** define external behavior. The version-manifest contract is
-  owned by [HA-Contract](https://github.com/CoreMatch/HA-Contract) at
+  owned by [Armorial Contract](https://github.com/CoreMatch/HA-Contract) at
   `/home/lnb/Desktop/HA/maintanance/HA-Cupbearer/knowledge/0006-version-manifest.md`.
   API shapes, field semantics, and validation rules are normative there, not
   here.
-- When an entry here conflicts with HA-Contract, **fix the entry, not the
+- When an entry here conflicts with Armorial Contract, **fix the entry, not the
   contract**.
 - Entries describe only the project's verified current state. Every claim
   carries evidence (`file:line`). Claims that could not be verified are

@@ -45,7 +45,7 @@ func SecretKeyNames() []string {
 }
 
 // GenerateRandomToken 生成 32 字节（64 位十六进制）的随机令牌。
-// 与生态内既有约定一致（HRPAuth utils.GenerateRandomToken(32) 同形态）。
+// 与生态内既有约定一致（Armorial utils.GenerateRandomToken(32) 同形态）。
 func GenerateRandomToken() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {

@@ -53,7 +53,8 @@ const ScanRootsEnvVar = "HACB_BOOTSTRAP_SCAN_ROOTS"
 const (
 	// envFileMarker 是 MergeEnvFile 补齐缺失变量时写的来源注释。标记之后
 	// 的键才是本工具写的；标记之前的键按外部既有值对待（绝不预填回显）。
-	envFileMarker = "由 HA-Cupbearer 首次运行初始化补齐"
+	envFileMarker       = "由 Armorial Cupbearer 首次运行初始化补齐"
+	legacyEnvFileMarker = "由 HA-Cupbearer 首次运行初始化补齐"
 
 	maxScanDirs       = 32 // 历史扫描目录上限（受限集合，防意外扩散）
 	maxCandidates     = 12 // 单目标候选上限（验证尝试的次数上限）
@@ -417,7 +418,7 @@ func toolAppendedEnvValues(path string) map[string]string {
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !marked {
-			if strings.Contains(trimmed, envFileMarker) {
+			if strings.Contains(trimmed, envFileMarker) || strings.Contains(trimmed, legacyEnvFileMarker) {
 				marked = true
 			}
 			continue

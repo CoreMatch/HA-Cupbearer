@@ -90,7 +90,7 @@ func (o *Orchestrator) composeTemplateServices(ctx context.Context, path string)
 // 连接形态，见 knowledge/0016）；网络不存在则零变化。
 func renderComposeOverride(runID string, pinned map[string]string, attachInfra bool, allServices []string) string {
 	var b strings.Builder
-	b.WriteString("# 由 HA-Cupbearer 一键触发自动生成（run " + runID + "）——勿手工编辑。\n")
+	b.WriteString("# 由 Armorial Cupbearer 一键触发自动生成（run " + runID + "）——勿手工编辑。\n")
 	b.WriteString("# 镜像引用来自各项目 deploy-manifest.yaml 的已发布引用（digest 优先）。\n")
 	if attachInfra {
 		b.WriteString("# 共享基础设施网络 ha-infra 已在：主栈挂入后按服务名解析 mysql/redis。\n")

@@ -41,7 +41,7 @@ smtp:
     # encryption 字段已删：代码已不再解析该字段（发信走明文 smtp.SendMail），
     # 解析与模板行于 2026-11-06 545a436 一并移除。
     from_email: "${SMTP_FROM_EMAIL}"
-    from_name: HRPAuth
+    from_name: Armorial
     host: "${SMTP_HOST}"
     password: "${SMTP_PASSWORD}"
     # 必须是无引号的数字：代码 getInt 只认数字类型，带引号会解析成 0，
@@ -139,8 +139,8 @@ sdk_packages:
     max_packages: 128
 
 site:
-    implementation: HRPAuth service
-    name: HRPAuth
+    implementation: Armorial service
+    name: Armorial
     version: "6"
 
 # 注意：v6 模板中的 storage / keygen / yggdrasil 三个段已在 v7->v8 迁移中

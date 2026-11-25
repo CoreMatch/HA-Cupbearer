@@ -3,7 +3,7 @@
 manifest_version: 1
 kind: service
 project: ha-cupbearer
-display_name: HA-Cupbearer
+display_name: Armorial Cupbearer
 group: ops
 # 未知：仓库无版本 tag，代码与配置均无服务版本字段。
 service_version: "unknown"
