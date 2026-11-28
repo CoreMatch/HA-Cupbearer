@@ -66,7 +66,7 @@ func (o *Orchestrator) smokeOne(ctx context.Context, m *manifest.Manifest, chk *
 
 	body := chk.Body
 	if body != "" {
-		if body, err = o.resolveSmokeSecrets(body); err != nil {
+		if body, err = o.resolveDeploymentSecrets(body); err != nil {
 			return err
 		}
 	}
@@ -75,7 +75,7 @@ func (o *Orchestrator) smokeOne(ctx context.Context, m *manifest.Manifest, chk *
 		return err
 	}
 	for _, k := range sortedHeaderKeys(chk.Headers) {
-		v, err := o.resolveSmokeSecrets(chk.Headers[k])
+		v, err := o.resolveDeploymentSecrets(chk.Headers[k])
 		if err != nil {
 			return err
 		}
@@ -170,9 +170,9 @@ func (o *Orchestrator) smokeURL(m *manifest.Manifest, chk *manifest.SmokeCheck, 
 	return fmt.Sprintf("http://%s:%d%s", host, port, chk.Path), nil
 }
 
-// resolveSmokeSecrets 把文本中的 ${secret:<name>} 全部替换为凭据文件里的值；
+// resolveDeploymentSecrets 把文本中的 ${secret:<name>} 全部替换为凭据文件里的值；
 // 任一缺失即报错并点名，不静默放过。
-func (o *Orchestrator) resolveSmokeSecrets(text string) (string, error) {
+func (o *Orchestrator) resolveDeploymentSecrets(text string) (string, error) {
 	if !strings.Contains(text, "${") {
 		return text, nil
 	}
@@ -188,7 +188,7 @@ func (o *Orchestrator) resolveSmokeSecrets(text string) (string, error) {
 		return ref
 	})
 	if len(missing) > 0 {
-		return "", fmt.Errorf("smoke secret(s) %v not configured in credentials file (smoke_secrets)", missing)
+		return "", fmt.Errorf("deployment secret(s) %v not configured in credentials file (smoke_secrets)", missing)
 	}
 	return out, nil
 }

@@ -49,32 +49,37 @@ var availableBytes = func(path string) (int64, error) {
 	return int64(st.Bavail) * int64(st.Bsize), nil
 }
 
+type StageResult struct {
+	SHA256  string
+	Changed bool
+}
+
 // Stage 把项目产物落到 destDir/<binary_name>。
 // 幂等：目标已存在且 sha256 与期望一致时直接跳过。
 // 落盘前做磁盘空间预检；产物经临时文件 + sha256 校验后原子改名。
-func Stage(ctx context.Context, m *manifest.Manifest, destDir string, creds *config.Credentials) (string, error) {
+func Stage(ctx context.Context, m *manifest.Manifest, destDir string, creds *config.Credentials) (StageResult, error) {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return "", err
+		return StageResult{}, err
 	}
 	dest := filepath.Join(destDir, m.Baremetal.Install.BinaryName)
 
 	expectSHA, source, fetchURL, err := resolveChecksum(ctx, m, creds)
 	if err != nil {
-		return "", err
+		return StageResult{}, err
 	}
 
 	if existing, err := fileSHA256(dest); err == nil && existing == expectSHA {
-		return expectSHA, nil // 幂等跳过
+		return StageResult{SHA256: expectSHA, Changed: false}, nil // 幂等跳过
 	}
 
 	// 磁盘空间预检：能确定产物大小时，不足则明确拒绝并给出差额。
 	size, known, err := artifactSize(ctx, m, creds)
 	if err != nil {
-		return "", err
+		return StageResult{}, err
 	}
 	if known {
 		if err := ensureDiskSpace(destDir, size+spaceMargin); err != nil {
-			return "", err
+			return StageResult{}, err
 		}
 	}
 
@@ -83,7 +88,7 @@ func Stage(ctx context.Context, m *manifest.Manifest, destDir string, creds *con
 
 	tmp, err := os.CreateTemp(destDir, tmpPrefix)
 	if err != nil {
-		return "", err
+		return StageResult{}, err
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
@@ -100,32 +105,32 @@ func Stage(ctx context.Context, m *manifest.Manifest, destDir string, creds *con
 	}
 	if err != nil {
 		tmp.Close()
-		return "", fmt.Errorf("fetch artifact from %s: %w", source, err)
+		return StageResult{}, fmt.Errorf("fetch artifact from %s: %w", source, err)
 	}
 
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		tmp.Close()
-		return "", err
+		return StageResult{}, err
 	}
 	got, err := hashStream(tmp)
 	if err != nil {
 		tmp.Close()
-		return "", err
+		return StageResult{}, err
 	}
 	if err := tmp.Close(); err != nil {
-		return "", err
+		return StageResult{}, err
 	}
 	if got != expectSHA {
-		return "", fmt.Errorf("sha256 mismatch: expect %s, got %s (partial/corrupted fetch rejected, target not written)", expectSHA, got)
+		return StageResult{}, fmt.Errorf("sha256 mismatch: expect %s, got %s (partial/corrupted fetch rejected, target not written)", expectSHA, got)
 	}
 
 	if err := os.Chmod(tmpName, 0o755); err != nil {
-		return "", err
+		return StageResult{}, err
 	}
 	if err := os.Rename(tmpName, dest); err != nil {
-		return "", err
+		return StageResult{}, err
 	}
-	return expectSHA, nil
+	return StageResult{SHA256: expectSHA, Changed: true}, nil
 }
 
 // VerifyLocalArtifact 校验 local_path 来源的产物与其校验和旁路：

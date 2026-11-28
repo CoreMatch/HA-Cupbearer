@@ -20,7 +20,7 @@ func TestLoadAggregate_DuplicateWinnerByScanRootOrder(t *testing.T) {
 	writeManifest(t, root2, "repo-b", validManifest) // 同名 svc-a
 
 	// 配置顺序在先的扫描根取胜，与目录现场无关。
-	manifests, dups, errs := LoadAggregate([]string{root1, root2}, "")
+	manifests, dups, errs := LoadAggregate([]string{root1, root2}, "", "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}
@@ -43,7 +43,7 @@ func TestLoadAggregate_DuplicateWinnerByScanRootOrder(t *testing.T) {
 	}
 
 	// 交换配置顺序 → 取胜者随之改变（确定性来自配置顺序）。
-	manifests, dups, errs = LoadAggregate([]string{root2, root1}, "")
+	manifests, dups, errs = LoadAggregate([]string{root2, root1}, "", "")
 	if len(errs) != 0 || len(manifests) != 1 {
 		t.Fatalf("reversed order: manifests=%d errs=%v", len(manifests), errs)
 	}
@@ -62,7 +62,7 @@ func TestLoadAggregate_DuplicateWithinRootAlphabetical(t *testing.T) {
 	writeManifest(t, dir, "Avalon-fixes", validManifest)
 	writeManifest(t, dir, "Avalon", validManifest)
 
-	manifests, dups, errs := LoadAggregate([]string{dir}, "")
+	manifests, dups, errs := LoadAggregate([]string{dir}, "", "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}
@@ -85,7 +85,7 @@ func TestLoadAggregate_ExcludesNonRepoDirs(t *testing.T) {
 		writeManifest(t, dir, name, strings.Replace(validManifest, "project: svc-a", "project: svc-excluded", 1))
 	}
 
-	manifests, dups, errs := LoadAggregate([]string{dir}, "")
+	manifests, dups, errs := LoadAggregate([]string{dir}, "", "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}
@@ -94,6 +94,38 @@ func TestLoadAggregate_ExcludesNonRepoDirs(t *testing.T) {
 	}
 	if len(dups) != 0 {
 		t.Fatalf("excluded dirs must not even produce duplicates: %+v", dups)
+	}
+}
+
+func TestLoadAggregate_ImportedManifestsAndPrecedence(t *testing.T) {
+	base := t.TempDir()
+	scanRoot := filepath.Join(base, "scan")
+	externalDir := filepath.Join(base, "external")
+	importedDir := filepath.Join(base, "state", "imported-manifests")
+	writeManifest(t, scanRoot, "repo", validManifest)
+	for _, dir := range []string{externalDir, importedDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "svc-a.yaml"), []byte(validManifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	manifests, dups, errs := LoadAggregate([]string{scanRoot}, externalDir, importedDir)
+	if len(errs) != 0 || len(manifests) != 1 {
+		t.Fatalf("load failed: manifests=%d errs=%v", len(manifests), errs)
+	}
+	if !strings.Contains(manifests[0].SourcePath, filepath.Join("scan", "repo")) {
+		t.Fatalf("repository manifest must win: %s", manifests[0].SourcePath)
+	}
+	if len(dups) != 1 || len(dups[0].Ignored) != 2 {
+		t.Fatalf("all imported/external duplicates must be recorded: %+v", dups)
+	}
+
+	manifests, _, errs = LoadAggregate(nil, "", importedDir)
+	if len(errs) != 0 || len(manifests) != 1 || manifests[0].Project != "svc-a" {
+		t.Fatalf("standalone imported manifest not loaded: %+v %v", manifests, errs)
 	}
 }
 
@@ -148,7 +180,7 @@ func TestLoadAggregate_ExternalDuplicateLosesToRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	manifests, dups, errs := LoadAggregate([]string{scanRoot}, extDir)
+	manifests, dups, errs := LoadAggregate([]string{scanRoot}, extDir, "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}

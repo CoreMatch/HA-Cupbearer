@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -24,6 +25,9 @@ var (
 	smokeSecretAnyRe  = regexp.MustCompile(`\$\{secret:[A-Za-z0-9_-]+\}`)
 	smokeBraceTokenRe = regexp.MustCompile(`\$\{[^}]*\}`)
 	validSmokeMethods = map[string]bool{"GET": true, "POST": true, "PUT": true, "DELETE": true}
+	validHookMethods  = map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true, "HEAD": true, "OPTIONS": true}
+	hookEnvNameRe     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	hookHeaderNameRe  = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 
 	// validImageSources 是 container.image.source 的合法取值。
 	validImageSources = map[string]bool{"build": true, "local_image": true, "registry": true}
@@ -79,6 +83,8 @@ func ValidateAggregate(manifests []*Manifest, loadErrors []error) *Report {
 	return rep
 }
 
+func IsValidProjectName(name string) bool { return projectNameRe.MatchString(name) }
+
 func validateSingle(rep *Report, m *Manifest) {
 	ctx := m.Project
 	if ctx == "" {
@@ -95,7 +101,7 @@ func validateSingle(rep *Report, m *Manifest) {
 	}
 	if m.Project == "" {
 		rep.addf("%s: project 不能为空", m.SourcePath)
-	} else if !projectNameRe.MatchString(m.Project) {
+	} else if !IsValidProjectName(m.Project) {
 		rep.addf("%s: project 只能包含小写字母、数字与连字符且以字母数字开头", ctx)
 	}
 	switch m.Runtime {
@@ -106,6 +112,10 @@ func validateSingle(rep *Report, m *Manifest) {
 	if m.Container.Enabled {
 		rep.addf("%s: container.enabled 已退役（2026-11-08 全仓扫描确认无清单在用），请改用顶层 runtime 选择器", ctx)
 	}
+	if m.Discovery.Depth < 0 || m.Discovery.Depth > 8 {
+		rep.addf("%s: discovery.depth 必须在 0-8 之间（当前 %d）", ctx, m.Discovery.Depth)
+	}
+	validateFileUpdateHooks(rep, m)
 	// digest 是生效引用（不是信息性声明）：无论 runtime 选择哪一段，
 	// 声明了就必须形态合法，否则宁可拒绝装载。
 	if m.Container.Image.Digest != "" && !imageDigestRe.MatchString(m.Container.Image.Digest) {
@@ -141,6 +151,113 @@ func validateSingle(rep *Report, m *Manifest) {
 		validateContainer(rep, m)
 	} else {
 		validateBaremetal(rep, m)
+	}
+}
+
+func validateFileUpdateHooks(rep *Report, m *Manifest) {
+	hooks := m.Hooks.AfterFileUpdate
+	if len(hooks) == 0 {
+		return
+	}
+	ctx := m.Project
+	if ctx == "" {
+		ctx = m.SourcePath
+	}
+	if m.Kind != "service" || m.Runtime == "container" || m.Baremetal.Process.Manager != "tinyvisor" {
+		rep.addf("%s: hooks.after_file_update 仅支持 baremetal 且 manager=tinyvisor 的 service 清单", ctx)
+	}
+	if len(hooks) > 16 {
+		rep.addf("%s: hooks.after_file_update 最多 16 个动作（当前 %d）", ctx, len(hooks))
+	}
+	for i, action := range hooks {
+		at := fmt.Sprintf("%s: hooks.after_file_update[%d]", ctx, i)
+		if action.Name != "" && strings.TrimSpace(action.Name) == "" {
+			rep.addf("%s: name 不能为空白", at)
+		}
+		if action.TimeoutSeconds < 0 || action.TimeoutSeconds > 300 {
+			rep.addf("%s: timeout_seconds 必须在 0-300 之间（当前 %d）", at, action.TimeoutSeconds)
+		}
+		switch action.Type {
+		case "shell":
+			if _, err := m.ResolveHookScript(action.Script); err != nil {
+				rep.addf("%s: %v", at, err)
+			}
+			if strings.Contains(action.Script, "${") {
+				rep.addf("%s: script 路径不允许占位符", at)
+			}
+			if len(action.Args) > 32 {
+				rep.addf("%s: args 最多 32 个", at)
+			}
+			for _, arg := range action.Args {
+				if strings.Contains(arg, "${") {
+					rep.addf("%s: args 不允许密钥引用；请改用 env 注入，避免密钥进入进程参数", at)
+				}
+			}
+			if len(action.Env) > 32 {
+				rep.addf("%s: env 最多 32 项", at)
+			}
+			for key, value := range action.Env {
+				if !hookEnvNameRe.MatchString(key) {
+					rep.addf("%s: env 名称 %q 不是合法环境变量名", at, key)
+				}
+				switch key {
+				case "HA_PROJECT", "HA_SERVICE_VERSION", "HA_DEPLOY_VERSION", "HA_RELEASE_DIR", "HA_ARTIFACT_PATH", "HA_ARTIFACT_SHA256":
+					rep.addf("%s: env 名称 %q 由编排器保留", at, key)
+				}
+				if strings.Contains(value, "${") && !smokeSecretRefRe.MatchString(value) {
+					rep.addf("%s: env[%s] 含 ${...} 但不是完整的 ${secret:<name>} 引用", at, key)
+				}
+			}
+			if action.URL != "" || action.Method != "" || action.Headers != nil || action.Body != "" || action.ContentType != "" || action.ExpectStatus != 0 {
+				rep.addf("%s: shell 动作不允许声明 HTTP 专用字段", at)
+			}
+		case "http":
+			if action.Script != "" || action.Args != nil || action.Env != nil {
+				rep.addf("%s: http 动作不允许声明 shell 专用字段", at)
+			}
+			parsed, err := url.Parse(action.URL)
+			if err != nil || parsed.Hostname() == "" || (!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) {
+				rep.addf("%s: url 必须是带主机名的 http/https 绝对地址", at)
+			} else {
+				if parsed.User != nil || parsed.Fragment != "" {
+					rep.addf("%s: url 不允许用户信息或 fragment", at)
+				}
+			}
+			if strings.Contains(action.URL, "${") {
+				rep.addf("%s: url 不允许密钥引用；请使用 headers", at)
+			}
+			method := strings.ToUpper(action.Method)
+			if method == "" {
+				method = "GET"
+			}
+			if !validHookMethods[method] {
+				rep.addf("%s: method 非法（%q）", at, action.Method)
+			}
+			if len(action.Headers) > 32 {
+				rep.addf("%s: headers 最多 32 项", at)
+			}
+			for key, value := range action.Headers {
+				if !hookHeaderNameRe.MatchString(key) || strings.ContainsAny(value, "\r\n") {
+					rep.addf("%s: headers[%q] 名称或值非法", at, key)
+				}
+				if strings.Contains(value, "${") && !smokeSecretRefRe.MatchString(value) {
+					rep.addf("%s: headers[%s] 含 ${...} 但不是完整的 ${secret:<name>} 引用", at, key)
+				}
+			}
+			if strings.ContainsAny(action.ContentType, "\r\n") {
+				rep.addf("%s: content_type 不允许换行", at)
+			}
+			for _, token := range smokeBraceTokenRe.FindAllString(action.Body, -1) {
+				if !smokeSecretAnyRe.MatchString(token) {
+					rep.addf("%s: body 含非法占位符 %q（只允许 ${secret:<name>}）", at, token)
+				}
+			}
+			if action.ExpectStatus != 0 && (action.ExpectStatus < 100 || action.ExpectStatus > 599) {
+				rep.addf("%s: expect_status 越界（%d）", at, action.ExpectStatus)
+			}
+		default:
+			rep.addf("%s: type 必须为 shell 或 http（当前 %q）", at, action.Type)
+		}
 	}
 }
 

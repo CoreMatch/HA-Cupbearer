@@ -192,6 +192,7 @@ func (o *Orchestrator) preflightScope(ctx context.Context, ms []*manifest.Manife
 		if mode == "deploy" {
 			o.checkDiskSpace(ctx, m, eff, report)
 			o.checkArtifact(ctx, m, report)
+			o.checkFileUpdateHooks(m, report)
 		}
 		o.checkDependencies(ctx, m, byProject, scopeSet, report)
 	}
@@ -575,6 +576,46 @@ func (o *Orchestrator) checkArtifact(ctx context.Context, m *manifest.Manifest, 
 			return
 		}
 		report.add(CheckResult{Project: m.Project, Name: "artifact", OK: true, Detail: detail})
+	}
+}
+
+func (o *Orchestrator) checkFileUpdateHooks(m *manifest.Manifest, report *PreflightReport) {
+	for i, action := range m.Hooks.AfterFileUpdate {
+		name := fmt.Sprintf("file-update-hook[%d]", i+1)
+		var texts []string
+		script := ""
+		switch action.Type {
+		case "shell":
+			var err error
+			script, err = hookScriptPath(m, &action)
+			if err != nil {
+				report.add(CheckResult{Project: m.Project, Name: name, Level: LevelBlocker, Detail: err.Error()})
+				continue
+			}
+			if err := syscall.Access(script, accessROK); err != nil {
+				report.add(CheckResult{Project: m.Project, Name: name, Level: LevelBlocker,
+					Detail: fmt.Sprintf("hook script %s exists but is not readable: %v", script, err)})
+				continue
+			}
+			for _, value := range action.Env {
+				texts = append(texts, value)
+			}
+		case "http":
+			for _, value := range action.Headers {
+				texts = append(texts, value)
+			}
+			texts = append(texts, action.Body)
+		}
+		if missing := o.hookSecretValues(texts...); len(missing) > 0 {
+			report.add(CheckResult{Project: m.Project, Name: name, Level: LevelBlocker,
+				Detail: fmt.Sprintf("hook secret(s) %v not configured in credentials file (smoke_secrets)", missing)})
+			continue
+		}
+		detail := fmt.Sprintf("shell script %s readable; secrets resolve; runs only after an artifact update or unfinished hook attempt", script)
+		if action.Type == "http" {
+			detail = "HTTP request validated; secrets resolve; request is deferred until an artifact update or unfinished hook attempt"
+		}
+		report.add(CheckResult{Project: m.Project, Name: name, OK: true, Detail: detail})
 	}
 }
 

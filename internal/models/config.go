@@ -43,6 +43,11 @@ type OrchestrationConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
 	// ScanRoots 为同级检出目录列表，编排器扫描 <root>/<repo>/deploy-manifest.yaml。
 	ScanRoots []string `yaml:"scan_roots" json:"scan_roots"`
+	// DeploymentRoots 为运行时部署根目录列表，发现器只扫描其直接子目录。
+	DeploymentRoots []string `yaml:"deployment_roots" json:"deployment_roots"`
+	// ImportedManifests 存放发现后确认导入的只读项目清单；留空时取
+	// <state_dir>/imported-manifests。
+	ImportedManifests string `yaml:"imported_manifests" json:"imported_manifests"`
 	// ExternalManifests 目录存放无仓库归属的依赖声明（如 mysql/redis），*.yaml。
 	ExternalManifests string `yaml:"external_manifests" json:"external_manifests"`
 	// StateDir 存放运行状态与运行记录（续跑依据）。默认 <data>/deploy。

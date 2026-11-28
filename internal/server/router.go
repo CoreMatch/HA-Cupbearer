@@ -50,6 +50,8 @@ func NewRouter(cfg *models.Config, orch *orchestrator.Orchestrator, deployToken 
 			deploy.GET("/preflight", handler.GetDeployPreflight)
 			deploy.GET("/runs", handler.GetDeployRuns)
 			deploy.GET("/runs/:id", handler.GetDeployRun)
+			deploy.GET("/discovery", handler.GetDeployDiscovery)
+			deploy.POST("/discovery/import", handler.deployAuth, handler.PostDeployDiscoveryImport)
 			deploy.POST("/run", handler.deployAuth, handler.PostDeployRun)
 			deploy.POST("/rollback", handler.deployAuth, handler.PostDeployRollback)
 			deploy.POST("/container/trigger", handler.deployAuth, handler.PostDeployContainerTrigger)

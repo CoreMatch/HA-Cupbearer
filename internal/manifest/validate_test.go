@@ -83,11 +83,96 @@ func validateSingleManifestYAML(t *testing.T, content string) *Report {
 	t.Helper()
 	dir := t.TempDir()
 	writeManifest(t, dir, "svc-a", content)
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}
 	return ValidateAggregate(manifests, errs)
+}
+
+func TestValidateFileUpdateHooks(t *testing.T) {
+	base := strings.Replace(validManifest, "  depends_on:\n    - { project: mysql, kind: required }\n", "", 1)
+	cases := []struct {
+		name    string
+		block   string
+		wantErr string
+	}{
+		{name: "shell and http", block: `
+hooks:
+  after_file_update:
+    - { name: migrate, type: shell, script: hooks/migrate.sh, args: ["--once"], env: { HOOK_TOKEN: "${secret:hook_token}" }, timeout_seconds: 60 }
+    - { name: notify, type: http, method: POST, url: https://example.invalid/hook, headers: { Authorization: "${secret:hook_token}" }, body: '{"project":"svc-a"}', expect_status: 204 }
+`},
+		{name: "unknown type", block: `
+hooks:
+  after_file_update:
+    - { type: command, script: hooks/run.sh }
+`, wantErr: "type 必须为 shell 或 http"},
+		{name: "script traversal", block: `
+hooks:
+  after_file_update:
+    - { type: shell, script: ../outside.sh }
+`, wantErr: "manifest directory"},
+		{name: "secret in args", block: `
+hooks:
+  after_file_update:
+    - { type: shell, script: hooks/run.sh, args: ["${secret:hook_token}"] }
+`, wantErr: "args 不允许密钥引用"},
+		{name: "unsafe http url", block: `
+hooks:
+  after_file_update:
+    - { type: http, url: ftp://example.invalid/hook }
+`, wantErr: "http/https"},
+		{name: "url userinfo", block: `
+hooks:
+  after_file_update:
+    - { type: http, url: https://user:pass@example.invalid/hook }
+`, wantErr: "用户信息"},
+		{name: "invalid method", block: `
+hooks:
+  after_file_update:
+    - { type: http, url: https://example.invalid/hook, method: TRACE }
+`, wantErr: "method 非法"},
+		{name: "timeout too large", block: `
+hooks:
+  after_file_update:
+    - { type: http, url: https://example.invalid/hook, timeout_seconds: 301 }
+`, wantErr: "timeout_seconds"},
+		{name: "shell with http fields", block: `
+hooks:
+  after_file_update:
+    - { type: shell, script: hooks/run.sh, url: https://example.invalid/hook }
+`, wantErr: "HTTP 专用字段"},
+		{name: "foreign manager", block: `
+hooks:
+  after_file_update:
+    - { type: shell, script: hooks/run.sh }
+`, wantErr: "manager=tinyvisor"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			content := base + tc.block
+			if tc.name == "foreign manager" {
+				content = strings.Replace(content, "manager: tinyvisor", "manager: manual", 1)
+			}
+			rep := validateSingleManifestYAML(t, content)
+			if tc.wantErr == "" {
+				if !rep.OK() {
+					t.Fatalf("expected pass, got: %v", rep.Errors)
+				}
+				return
+			}
+			found := false
+			for _, err := range rep.Errors {
+				if strings.Contains(err, tc.wantErr) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("expected error containing %q, got: %v", tc.wantErr, rep.Errors)
+			}
+		})
+	}
 }
 
 func TestValidateSharedData(t *testing.T) {
@@ -317,7 +402,7 @@ func TestValidateAggregate_Valid(t *testing.T) {
 	writeManifest(t, dir, "svc-a", validManifest)
 	writeManifest(t, dir, "mysql", externalManifest)
 
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}
@@ -355,7 +440,7 @@ func TestValidateAggregate_MissingHealthAndDependency(t *testing.T) {
 	// svc-b 依赖 mysql，但 mysql 清单不在扫描范围内。
 	writeManifest(t, dir, "svc-b", strings.Replace(validManifest, "project: svc-a", "project: svc-b", 1))
 
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	rep := ValidateAggregate(manifests, errs)
 	if rep.OK() {
 		t.Fatalf("expected errors, got none")
@@ -376,7 +461,7 @@ func TestValidateAggregate_PortConflict(t *testing.T) {
 	other := strings.Replace(validManifest, "project: svc-a", "project: svc-c", 1)
 	writeManifest(t, dir, "three", other)
 
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	rep := ValidateAggregate(manifests, errs)
 	joined := strings.Join(rep.Errors, "\n")
 	if !strings.Contains(joined, "port conflict") {
@@ -392,7 +477,7 @@ func TestValidateAggregate_DeduplicatedInputPasses(t *testing.T) {
 	writeManifest(t, dir, "two", validManifest) // 完全同名
 	writeManifest(t, dir, "mysql", externalManifest)
 
-	manifests, dups, errs := LoadAggregate([]string{dir}, "")
+	manifests, dups, errs := LoadAggregate([]string{dir}, "", "")
 	if len(dups) != 1 {
 		t.Fatalf("want 1 duplicate group, got %d", len(dups))
 	}
@@ -432,7 +517,7 @@ func TestValidateAggregate_Cycle(t *testing.T) {
 	writeManifest(t, dir, "a", serviceManifest("x-a", 9001, "x-b"))
 	writeManifest(t, dir, "b", serviceManifest("x-b", 9002, "x-a"))
 
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	rep := ValidateAggregate(manifests, errs)
 	joined := strings.Join(rep.Errors, "\n")
 	if !strings.Contains(joined, "dependency cycle") {
@@ -443,7 +528,7 @@ func TestValidateAggregate_Cycle(t *testing.T) {
 func TestValidateAggregate_ContainerEnabledRetired(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, "frozen", validManifest+"\ncontainer: { enabled: true }\n")
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	rep := ValidateAggregate(manifests, errs)
 	joined := strings.Join(rep.Errors, "\n")
 	if !strings.Contains(joined, "container.enabled 已退役") {
@@ -458,7 +543,7 @@ func TestValidateAggregate_BadEnums(t *testing.T) {
 	bad = strings.Replace(bad, "group: core", "group: kitchen", 1)
 	writeManifest(t, dir, "bad", bad)
 
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	rep := ValidateAggregate(manifests, errs)
 	joined := strings.Join(rep.Errors, "\n")
 	for _, want := range []string{"group 非法", "manager 非法", "exposure 非法"} {
@@ -514,7 +599,7 @@ func validatePluginWithDep(t *testing.T, pluginYAML string) *Report {
 	dir := t.TempDir()
 	writeManifest(t, dir, "svc-a", pluginDepManifest)
 	writeManifest(t, dir, "plug-a", pluginYAML)
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}
@@ -713,7 +798,7 @@ func validateGrailManifest(t *testing.T, baseURL, project, channel string) *Repo
 	t.Helper()
 	dir := t.TempDir()
 	writeManifest(t, dir, "svc-g", fmt.Sprintf(grailManifestYAML, baseURL, project, channel))
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}
@@ -730,7 +815,7 @@ func TestValidateGrailSource_Valid(t *testing.T) {
 func TestValidateGrailSource_Defaults(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, "svc-g", fmt.Sprintf(grailManifestYAML, "https://grail.example.internal", "svc-g", "release"))
-	manifests, _, errs := LoadAggregate([]string{dir}, "")
+	manifests, _, errs := LoadAggregate([]string{dir}, "", "")
 	if len(errs) != 0 {
 		t.Fatalf("load errors: %v", errs)
 	}

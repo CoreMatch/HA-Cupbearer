@@ -42,7 +42,7 @@ func TestStage_LocalPath_VerifyAndIdempotent(t *testing.T) {
 	m, _ := localPathManifest(t, content)
 	destDir := t.TempDir()
 
-	sha1, err := Stage(context.Background(), m, destDir, nil)
+	staged, err := Stage(context.Background(), m, destDir, nil)
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
@@ -59,12 +59,13 @@ func TestStage_LocalPath_VerifyAndIdempotent(t *testing.T) {
 		t.Errorf("staged artifact must be executable, mode=%v", info.Mode())
 	}
 
-	// 幂等：再次 Stage 不报错且不改写文件
-	if _, err := Stage(context.Background(), m, destDir, nil); err != nil {
+	// 幂等：再次 Stage 不报错、不改写文件，也不报告为实际更新。
+	again, err := Stage(context.Background(), m, destDir, nil)
+	if err != nil {
 		t.Fatalf("idempotent stage: %v", err)
 	}
-	if sha1 == "" {
-		t.Error("sha must not be empty")
+	if !staged.Changed || again.Changed || again.SHA256 != staged.SHA256 || staged.SHA256 == "" {
+		t.Fatalf("unexpected stage results: first=%+v second=%+v", staged, again)
 	}
 }
 

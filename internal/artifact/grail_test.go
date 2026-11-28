@@ -147,13 +147,13 @@ func TestStageGrailHappyPath(t *testing.T) {
 	creds := &config.Credentials{GrailRootPublicKey: base64.StdEncoding.EncodeToString(f.rootPub)}
 	destDir := t.TempDir()
 
-	sha, err := Stage(context.Background(), m, destDir, creds)
+	staged, err := Stage(context.Background(), m, destDir, creds)
 	if err != nil {
 		t.Fatalf("Stage(grail): %v", err)
 	}
 	want := sha256.Sum256(payload)
-	if sha != hex.EncodeToString(want[:]) {
-		t.Fatalf("sha = %s, want %s", sha, hex.EncodeToString(want[:]))
+	if staged.SHA256 != hex.EncodeToString(want[:]) {
+		t.Fatalf("sha = %s, want %s", staged.SHA256, hex.EncodeToString(want[:]))
 	}
 	got, err := os.ReadFile(filepath.Join(destDir, "svc-g"))
 	if err != nil {

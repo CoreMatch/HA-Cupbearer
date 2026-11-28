@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const ConfigVersion = "3"
+const ConfigVersion = "4"
 
 // ConfigMigration describes one version step: it transforms a config map from
 // FromVersion into ToVersion. Migrations run strictly in the order they are
@@ -41,6 +41,15 @@ func configMigrations() []ConfigMigration {
 			ToVersion:   "3",
 			Migrate: func(cfg map[string]interface{}, tokenGen func() string) error {
 				cfg["version"] = "3"
+				return nil
+			},
+		},
+		// v3 -> v4：引入部署目录发现与确认导入；缺省字段保持关闭。
+		{
+			FromVersion: "3",
+			ToVersion:   "4",
+			Migrate: func(cfg map[string]interface{}, tokenGen func() string) error {
+				cfg["version"] = "4"
 				return nil
 			},
 		},

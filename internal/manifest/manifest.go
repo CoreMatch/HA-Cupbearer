@@ -47,9 +47,39 @@ type Manifest struct {
 	// Plugin 仅 kind=plugin 清单使用：插件型产物（装进别人进程的 jar 一类）
 	// 与它的安装目标。编排器当前只登记与校验这类条目，不执行安装。
 	Plugin *PluginSpec `yaml:"plugin,omitempty" json:"plugin,omitempty"`
+	// Discovery 可写在部署根目录的清单中，声明子服务清单的递归发现深度；
+	// depth=1 表示只发现直接子目录，默认 1，最大 8。
+	Discovery DiscoverySpec `yaml:"discovery,omitempty" json:"discovery,omitempty"`
+	// Hooks 声明产物文件实际更新后、切换 current 前的部署动作。
+	Hooks Hooks `yaml:"hooks,omitempty" json:"hooks,omitempty"`
 
 	// SourcePath 记录装载来源（校验报告用），不参与序列化。
 	SourcePath string `yaml:"-" json:"source_path"`
+}
+
+type DiscoverySpec struct {
+	Depth int `yaml:"depth" json:"depth"`
+}
+
+type Hooks struct {
+	AfterFileUpdate []FileUpdateAction `yaml:"after_file_update,omitempty" json:"after_file_update,omitempty"`
+}
+
+// FileUpdateAction 在裸金属产物通过校验并原子替换后执行。
+// Shell 脚本路径相对清单所在目录；密钥只通过 env 或 HTTP 头/体引用。
+type FileUpdateAction struct {
+	Name           string            `yaml:"name,omitempty" json:"name,omitempty"`
+	Type           string            `yaml:"type" json:"type"` // shell | http
+	Script         string            `yaml:"script,omitempty" json:"script,omitempty"`
+	Args           []string          `yaml:"args,omitempty" json:"args,omitempty"`
+	Env            map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
+	URL            string            `yaml:"url,omitempty" json:"url,omitempty"`
+	Method         string            `yaml:"method,omitempty" json:"method,omitempty"`
+	Headers        map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
+	Body           string            `yaml:"body,omitempty" json:"body,omitempty"`
+	ContentType    string            `yaml:"content_type,omitempty" json:"content_type,omitempty"`
+	ExpectStatus   int               `yaml:"expect_status,omitempty" json:"expect_status,omitempty"`
+	TimeoutSeconds int               `yaml:"timeout_seconds,omitempty" json:"timeout_seconds,omitempty"`
 }
 
 // Facts 为运行时无关事实，容器编排阶段原样复用。
@@ -229,6 +259,18 @@ func (m *Manifest) ResolveLocalPath() string {
 	return filepath.Join(filepath.Dir(m.SourcePath), p)
 }
 
+// ResolveHookScript 将清单中的脚本相对路径锚定到清单所在目录。
+func (m *Manifest) ResolveHookScript(script string) (string, error) {
+	if m.SourcePath == "" {
+		return "", fmt.Errorf("hook script requires a file-backed manifest source path")
+	}
+	clean := filepath.Clean(script)
+	if script == "" || filepath.IsAbs(script) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("hook script %q must be a non-empty relative path inside the manifest directory", script)
+	}
+	return filepath.Join(filepath.Dir(m.SourcePath), clean), nil
+}
+
 // ReleaseSpec 描述 CI 发布资产位置。资产命名硬约定：
 // <项目名>-linux-amd64 与 <项目名>-linux-amd64.sha256 双资产；
 // asset / checksum_asset 留空时按该约定从 project 名推导。
@@ -404,12 +446,12 @@ type DuplicateGroup struct {
 	Ignored []string `json:"ignored"` // 被忽略副本的 SourcePath（按装载顺序）
 }
 
-// LoadAggregate 从扫描根与外部清单目录装载清单，并按确定性规则解决重名。
+// LoadAggregate 从扫描根、外部清单目录与导入清单目录装载清单，并按确定性规则解决重名。
 // scanRoots 下按 <root>/<repo>/deploy-manifest.yaml 规则查找；
-// externalDir 下装载全部 *.yaml。
+// externalDir 与 importedDir 下装载全部 *.yaml。
 //
 // 重名取舍规则（确定性，不依赖目录现场）：
-//  1. 装载顺序 = scan_roots 配置顺序（同一根内按目录名排序）→ 外部清单目录；
+//  1. 装载顺序 = scan_roots 配置顺序（同一根内按目录名排序）→ 外部清单目录 → 导入清单目录；
 //  2. 同名项目先装载者取胜，其余副本不进生效列表，记入 DuplicateGroup；
 //  3. 隐藏目录与 excludedRepoDirs 中的目录不作为仓库候选。
 //
@@ -417,7 +459,7 @@ type DuplicateGroup struct {
 // "开个分支干活"瘫痪整条部署链路。需要严格语义（重名即失败）时，由
 // 调用方依据返回的 DuplicateGroup 拒绝（编排器 strict_project_names 开关）。
 // 返回去重后的生效清单、重名取舍记录与逐项装载错误。
-func LoadAggregate(scanRoots []string, externalDir string) ([]*Manifest, []DuplicateGroup, []error) {
+func LoadAggregate(scanRoots []string, externalDir, importedDir string) ([]*Manifest, []DuplicateGroup, []error) {
 	var manifests []*Manifest
 	var dups []DuplicateGroup
 	var errs []error
@@ -472,11 +514,15 @@ func LoadAggregate(scanRoots []string, externalDir string) ([]*Manifest, []Dupli
 		}
 	}
 
-	if externalDir != "" {
-		pattern := filepath.Join(externalDir, "*.yaml")
+	loadDir := func(dir, label string) {
+		if dir == "" {
+			return
+		}
+		pattern := filepath.Join(dir, "*.yaml")
 		files, err := filepath.Glob(pattern)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("external manifests %s: %w", externalDir, err))
+			errs = append(errs, fmt.Errorf("%s %s: %w", label, dir, err))
+			return
 		}
 		sort.Strings(files)
 		for _, path := range files {
@@ -488,6 +534,9 @@ func LoadAggregate(scanRoots []string, externalDir string) ([]*Manifest, []Dupli
 			register(m)
 		}
 	}
+
+	loadDir(externalDir, "external manifests")
+	loadDir(importedDir, "imported manifests")
 
 	return manifests, dups, errs
 }

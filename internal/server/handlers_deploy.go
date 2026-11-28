@@ -77,6 +77,8 @@ func (h *Handler) GetDeployManifests(c *gin.Context) {
 		// 空串）。契约 ha-cupbearer.yaml v1.5.0：供运维向导展示与核对
 		// 来源声明，纯增量字段。
 		ArtifactSource string `json:"artifact_source"`
+		// FileUpdateHookCount 让操作面在部署前可见文件更新动作的数量。
+		FileUpdateHookCount int `json:"file_update_hook_count"`
 	}
 	views := make([]view, 0, len(manifests))
 	for _, m := range manifests {
@@ -91,14 +93,15 @@ func (h *Handler) GetDeployManifests(c *gin.Context) {
 			artifactSource = ""
 		}
 		views = append(views, view{
-			Project:        m.Project,
-			Kind:           m.Kind,
-			DisplayName:    m.DisplayName,
-			Group:          m.Group,
-			ServiceVersion: m.ServiceVersion,
-			Manager:        manager,
-			SourcePath:     m.SourcePath,
-			ArtifactSource: artifactSource,
+			Project:             m.Project,
+			Kind:                m.Kind,
+			DisplayName:         m.DisplayName,
+			Group:               m.Group,
+			ServiceVersion:      m.ServiceVersion,
+			Manager:             manager,
+			SourcePath:          m.SourcePath,
+			ArtifactSource:      artifactSource,
+			FileUpdateHookCount: len(m.Hooks.AfterFileUpdate),
 		})
 	}
 

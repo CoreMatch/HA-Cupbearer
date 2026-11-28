@@ -1,4 +1,4 @@
-version: "2"
+version: "4"
 
 server:
   listen: ":18080"
@@ -8,3 +8,9 @@ storage:
 
 manifest:
   path: "./data/manifest.json"
+
+orchestration:
+  enabled: false
+  scan_roots: []
+  # 仅配置部署根目录；递归深度由根目录 deploy-manifest.yaml 的 discovery.depth 声明。
+  deployment_roots: []

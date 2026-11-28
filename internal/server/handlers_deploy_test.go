@@ -140,8 +140,8 @@ func buildOrchestrationEnv(t *testing.T) (*orchestrator.Orchestrator, *models.Co
 	return orch, cfg, port
 }
 
-// TestGetDeployManifestsArtifactSource：聚合清单视图自契约 1.5.0 起暴露
-// 每个项目声明的裸金属产物来源；external 类项目恒为空串。
+// TestGetDeployManifestsArtifactSource：聚合清单视图暴露产物来源与
+// 文件更新动作数量；external 类项目的两者都为零值。
 func TestGetDeployManifestsArtifactSource(t *testing.T) {
 	base := t.TempDir()
 	scanRoot := filepath.Join(base, "scan")
@@ -165,6 +165,7 @@ func TestGetDeployManifestsArtifactSource(t *testing.T) {
 			Install:  manifest.InstallSpec{Root: filepath.Join(base, "install", "svc-a"), Layout: "releases", BinaryName: "svc-a", KeepReleases: 3},
 			Artifact: manifest.ArtifactSpec{Source: "local_path", LocalPath: filepath.Join(base, "svc-a-linux-amd64")},
 		},
+		Hooks: manifest.Hooks{AfterFileUpdate: []manifest.FileUpdateAction{{Name: "notify", Type: "http", URL: "https://example.invalid/hook"}}},
 	}
 	data, err := yaml.Marshal(svc)
 	if err != nil {
@@ -220,9 +221,10 @@ facts:
 		Data struct {
 			Count    int `json:"count"`
 			Projects []struct {
-				Project        string `json:"project"`
-				Manager        string `json:"manager"`
-				ArtifactSource string `json:"artifact_source"`
+				Project             string `json:"project"`
+				Manager             string `json:"manager"`
+				ArtifactSource      string `json:"artifact_source"`
+				FileUpdateHookCount int    `json:"file_update_hook_count"`
 			} `json:"projects"`
 		} `json:"data"`
 	}
@@ -233,14 +235,19 @@ facts:
 		t.Fatalf("count = %d, want 2: %s", out.Data.Count, w.Body.String())
 	}
 	got := map[string]string{}
+	hooks := map[string]int{}
 	for _, p := range out.Data.Projects {
 		got[p.Project] = p.ArtifactSource
+		hooks[p.Project] = p.FileUpdateHookCount
 	}
 	if got["svc-a"] != "local_path" {
 		t.Errorf("svc-a artifact_source = %q, want local_path", got["svc-a"])
 	}
 	if got["mysql"] != "" {
 		t.Errorf("external artifact_source = %q, want empty", got["mysql"])
+	}
+	if hooks["svc-a"] != 1 || hooks["mysql"] != 0 {
+		t.Errorf("file_update_hook_count = %v, want svc-a=1 mysql=0", hooks)
 	}
 }
 

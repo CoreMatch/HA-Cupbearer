@@ -297,7 +297,7 @@ func newContainerEnv(t *testing.T) *containerEnv {
 }
 
 // newContainerEnvWithImage 与 newContainerEnv 相同，但 container 段可替换
-//（registry 来源等场景用）。
+// （registry 来源等场景用）。
 func newContainerEnvWithImage(t *testing.T, containerSection string) *containerEnv {
 	t.Helper()
 	base := t.TempDir()

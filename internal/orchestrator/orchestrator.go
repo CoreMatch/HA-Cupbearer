@@ -112,8 +112,9 @@ type Orchestrator struct {
 	docker docker.Driver
 	store  *Store
 
-	mu      sync.Mutex
-	current *Run
+	mu       sync.Mutex
+	current  *Run
+	importMu sync.Mutex
 }
 
 func New(cfg *models.Config, creds *config.Credentials) *Orchestrator {
@@ -134,6 +135,17 @@ func New(cfg *models.Config, creds *config.Credentials) *Orchestrator {
 	}
 }
 
+func (o *Orchestrator) importedManifestsDir() string {
+	if dir := strings.TrimSpace(o.cfg.Orchestration.ImportedManifests); dir != "" {
+		return dir
+	}
+	stateDir := strings.TrimSpace(o.cfg.Orchestration.StateDir)
+	if stateDir == "" {
+		stateDir = "./data/deploy"
+	}
+	return filepath.Join(stateDir, "imported-manifests")
+}
+
 // Load 装载并聚合校验全部清单。
 //
 // 重名清单由装载层按确定性规则取舍（scan_roots 配置顺序在先者胜，
@@ -141,7 +153,7 @@ func New(cfg *models.Config, creds *config.Credentials) *Orchestrator {
 // 或检出副本造成重名是常态，硬阻断会让"开个分支干活"瘫痪整条部署
 // 链路。配置 strict_project_names 时才把重名升为错误（重名即失败）。
 func (o *Orchestrator) Load() ([]*manifest.Manifest, *manifest.Report) {
-	ms, dups, errs := manifest.LoadAggregate(o.cfg.Orchestration.ScanRoots, o.cfg.Orchestration.ExternalManifests)
+	ms, dups, errs := manifest.LoadAggregate(o.cfg.Orchestration.ScanRoots, o.cfg.Orchestration.ExternalManifests, o.importedManifestsDir())
 	rep := manifest.ValidateAggregate(ms, errs)
 	for _, d := range dups {
 		msg := fmt.Sprintf("项目 %q 清单重名：采用 %s，忽略 %s",
@@ -563,6 +575,10 @@ func (o *Orchestrator) executeProject(ctx context.Context, run *Run, raw *manife
 			res.Steps = append(res.Steps, StepRecord{Name: "ensure-shared", OK: true,
 				Detail: "dry-run: mkdir " + filepath.Join(eff.root, shared)})
 		}
+		if len(m.Hooks.AfterFileUpdate) > 0 {
+			res.Steps = append(res.Steps, StepRecord{Name: "after-file-update", OK: true,
+				Detail: fmt.Sprintf("dry-run: %d action(s) after an actual artifact update or unfinished hook attempt", len(m.Hooks.AfterFileUpdate))})
+		}
 		res.Steps = append(res.Steps,
 			StepRecord{Name: "symlink", OK: true, Detail: "dry-run: current -> releases/" + dryVersion},
 			StepRecord{Name: "ensure-script", OK: true, Detail: "dry-run: upsert " + m.Project},
@@ -608,8 +624,8 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 
 	// 1. 产物：下载/复制 + sha256 校验 + 幂等落版本目录。
 	relDir := releaseDir(eff.root, deployVersion)
-	sha, err := artifact.Stage(ctx, m, relDir, o.creds)
-	if !addStep("artifact", err, fmt.Sprintf("stage %s (sha256 %s)", m.Baremetal.Artifact.Source, shortSHA(sha))) {
+	staged, err := artifact.Stage(ctx, m, relDir, o.creds)
+	if !addStep("artifact", err, fmt.Sprintf("stage %s (sha256 %s, changed=%v)", m.Baremetal.Artifact.Source, shortSHA(staged.SHA256), staged.Changed)) {
 		res.Outcome = OutcomeFailed
 		res.Detail = "artifact stage failed"
 		return
@@ -626,7 +642,18 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 		}
 	}
 
-	// 2. 软链：原子切换 current -> releases/<version>。
+	// 2. 文件更新动作：失败时新版本尚未激活，current 仍指向上一版本。
+	stepsBeforeHooks := len(res.Steps)
+	if err = o.runAfterFileUpdate(ctx, m, relDir, deployVersion, staged.SHA256, staged.Changed, res); err != nil {
+		if len(res.Steps) == stepsBeforeHooks {
+			addStep("after-file-update", err, "run file update actions")
+		}
+		res.Outcome = OutcomeFailed
+		res.Detail = "file update action failed before activation: " + o.redactHookOutput(err.Error())
+		return
+	}
+
+	// 3. 软链：原子切换 current -> releases/<version>。
 	activeBefore := readActiveVersion(eff.root)
 	linkChanged := activeBefore != deployVersion
 	if linkChanged {
@@ -649,7 +676,7 @@ func (o *Orchestrator) deployManaged(ctx context.Context, run *Run, m *manifest.
 
 	// 4. 激活判定：版本未变 + 无漂移 + 已健康 → 幂等零动作。
 	healthyBefore := o.probeOnce(ctx, m, eff.healthPort) == nil
-	if !linkChanged && !scriptDrift && healthyBefore {
+	if !linkChanged && !scriptDrift && !staged.Changed && healthyBefore {
 		res.Outcome = OutcomeUpToDate
 		res.Detail = "version active, script aligned, health ok: no action"
 		addStep("activate", nil, "skipped (up-to-date)")

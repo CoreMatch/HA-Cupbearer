@@ -32,16 +32,25 @@ import (
 
 // tinyvisorStub 模拟 Tinyvisor 的关键鉴权与查询行为：
 // /ping 免鉴权；/api/* 校验 X-Minivisor-Key，无效返回 401（与真实实现一致）。
+type tinyvisorScriptPayload struct {
+	WorkDir       string `json:"workDir"`
+	Content       string `json:"content"`
+	AutoStart     bool   `json:"autoStart"`
+	RestartPolicy string `json:"restartPolicy"`
+}
+
 type tinyvisorStub struct {
-	key     string
-	mu      sync.Mutex
-	scripts map[string]string // name -> status
-	server  *httptest.Server
+	key      string
+	mu       sync.Mutex
+	scripts  map[string]string // name -> status
+	payloads map[string]tinyvisorScriptPayload
+	restarts map[string]int
+	server   *httptest.Server
 }
 
 func newTinyvisorStub(t *testing.T, key string) *tinyvisorStub {
 	t.Helper()
-	s := &tinyvisorStub{key: key, scripts: map[string]string{}}
+	s := &tinyvisorStub{key: key, scripts: map[string]string{}, payloads: map[string]tinyvisorScriptPayload{}, restarts: map[string]int{}}
 
 	writeJSON := func(w http.ResponseWriter, code int, v interface{}) {
 		w.Header().Set("Content-Type", "application/json")
@@ -80,6 +89,9 @@ func newTinyvisorStub(t *testing.T, key string) *tinyvisorStub {
 				return
 			}
 			s.setStatus(name, "running")
+			s.mu.Lock()
+			s.restarts[name]++
+			s.mu.Unlock()
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"script": map[string]interface{}{"id": name, "name": name, "status": "running"},
 			})
@@ -90,26 +102,25 @@ func newTinyvisorStub(t *testing.T, key string) *tinyvisorStub {
 		case http.MethodGet:
 			s.mu.Lock()
 			status, ok := s.scripts[name]
+			payload := s.payloads[name]
 			s.mu.Unlock()
 			if !ok {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{
-				"script": map[string]interface{}{"id": name, "name": name, "status": status},
+				"script": map[string]interface{}{"id": name, "name": name, "status": status, "workDir": payload.WorkDir, "content": payload.Content, "autoStart": payload.AutoStart, "restartPolicy": payload.RestartPolicy},
 			})
 		case http.MethodPut:
 			// 按名幂等登记桩：记录即视为成功。
-			var payload struct {
-				WorkDir string `json:"workDir"`
-				Content string `json:"content"`
-			}
+			var payload tinyvisorScriptPayload
 			_ = json.NewDecoder(r.Body).Decode(&payload)
 			s.mu.Lock()
 			_, created := s.scripts[name]
 			if _, ok := s.scripts[name]; !ok {
 				s.scripts[name] = "stopped"
 			}
+			s.payloads[name] = payload
 			s.mu.Unlock()
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"script":  map[string]interface{}{"id": name, "name": name, "status": "stopped", "workDir": payload.WorkDir, "content": payload.Content},
@@ -128,6 +139,12 @@ func (s *tinyvisorStub) setStatus(name, status string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.scripts[name] = status
+}
+
+func (s *tinyvisorStub) restartCount(name string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.restarts[name]
 }
 
 // ---------- 测试环境 ----------
